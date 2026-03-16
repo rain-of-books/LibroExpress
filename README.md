@@ -38,7 +38,7 @@ Sistema de gestión para la librería y papelería LibroExpress desarrollado con
    - Sincronización con archivo JSON
    - Contador de productos en barra de estado
 
-## 📋 Requisitos del Sistema
+### 📋 Requisitos del Sistema
 
 - **Python 3.8+**
 - **PySide6** 6.10.2+
