@@ -4,11 +4,11 @@
     "name": "Cuaderno Universitario 200 hojas",
     "category": "Papelería",
     "price": 15800,
-    "quantity": 25,
+    "quantity": 17,
     "isbn": "",
     "supplier": "Papelería Panamericana",
     "created_at": "2026-03-15T12:00:00",
-    "updated_at": "2026-03-15T12:00:00"
+    "updated_at": "2026-03-22T22:18:18.353612"
   },
   {
     "id": "PROD_20260315120002",
@@ -22,91 +22,102 @@
     "updated_at": "2026-03-15T12:00:00"
   },
   {
-    "id": "PROD_20260315174525",
-    "name": "crepusculos",
-    "category": "Papelería",
-    "price": 45000,
-    "quantity": 10,
-    "isbn": "123-456-789-123-4",
-    "supplier": "ys-inc",
-    "created_at": "2026-03-15T17:45:25.443444",
-    "updated_at": "2026-03-15T17:56:05.137917"
-  },
-  {
-    "id": "PROD_20260315180216",
-    "name": "jkjkjk",
-    "category": "papelerio",
-    "price": 13500.0,
-    "quantity": 4,
-    "isbn": "9093-8984-092-2",
-    "supplier": "",
-    "created_at": "2026-03-15T18:02:16.539904",
-    "updated_at": "2026-03-15T18:36:49.180089"
-  },
-  {
-    "id": "PROD_20260315181151",
-    "name": "prueba",
-    "category": "Literatura",
-    "price": 22500,
-    "quantity": 12,
-    "isbn": "",
-    "supplier": "",
-    "created_at": "2026-03-15T18:11:51.596523",
-    "updated_at": "2026-03-15T18:27:59.762634"
-  },
-  {
     "id": "PROD_20260315183617",
     "name": "fast y furius",
     "category": "acction",
     "price": 25900.0,
-    "quantity": 12,
+    "quantity": 7,
     "isbn": "",
     "supplier": "ys-inc",
     "created_at": "2026-03-15T18:36:17.428254",
-    "updated_at": "2026-03-15T18:42:25.402997"
+    "updated_at": "2026-03-22T22:03:51.481168"
   },
   {
     "id": "PROD_20260315190502",
     "name": "Harry Potter y la Piedra Filosofal",
     "category": "Literatura",
-    "price": 48000,
-    "quantity": 15,
+    "price": 48000.0,
+    "quantity": 18,
     "isbn": "978-84-670-0187-5",
     "supplier": "Salamandra",
     "created_at": "2026-03-15T19:05:02",
-    "updated_at": "2026-03-15T19:05:02"
+    "updated_at": "2026-03-20T21:28:15.963825"
   },
   {
     "id": "PROD_20260315191003",
     "name": "Resaltadores fluorescentes x4",
     "category": "Papelería",
-    "price": 7800,
-    "quantity": 50,
+    "price": 7800.0,
+    "quantity": 12,
     "isbn": "",
     "supplier": "Oficentro",
     "created_at": "2026-03-15T19:10:03",
-    "updated_at": "2026-03-15T19:10:03"
+    "updated_at": "2026-03-22T22:10:38.904601"
   },
   {
     "id": "PROD_20260315191504",
     "name": "El Principito",
     "category": "Literatura",
-    "price": 32000,
-    "quantity": 20,
+    "price": 32000.0,
+    "quantity": 2,
     "isbn": "978-2-07-061275-8",
     "supplier": "Gallimard",
     "created_at": "2026-03-15T19:15:04",
-    "updated_at": "2026-03-15T19:15:04"
+    "updated_at": "2026-03-22T22:16:34.352115"
   },
   {
-    "id": "PROD_20260315191954",
-    "name": "233232",
-    "category": "3443",
-    "price": 10980.0,
-    "quantity": 0,
+    "id": "PROD_20260315192005",
+    "name": "Diccionario Español-Inglés",
+    "category": "Educativo",
+    "price": 42000,
+    "quantity": 10,
+    "isbn": "978-0-19-953556-9",
+    "supplier": "Oxford",
+    "created_at": "2026-03-15T19:20:05",
+    "updated_at": "2026-03-20T21:30:00"
+  },
+  {
+    "id": "PROD_20260315192506",
+    "name": "Calculadora Científica Casio",
+    "category": "Tecnología",
+    "price": 65000,
+    "quantity": 7,
     "isbn": "",
-    "supplier": "",
-    "created_at": "2026-03-15T19:19:54.236966",
-    "updated_at": "2026-03-15T19:22:59.198595"
+    "supplier": "Casio",
+    "created_at": "2026-03-15T19:25:06",
+    "updated_at": "2026-03-20T21:30:10"
+  },
+  {
+    "id": "PROD_20260315193508",
+    "name": "Marcadores Permanentes x6",
+    "category": "Papelería",
+    "price": 12500,
+    "quantity": 20,
+    "isbn": "",
+    "supplier": "Sharpie",
+    "created_at": "2026-03-15T19:35:08",
+    "updated_at": "2026-03-20T21:30:30"
+  },
+  {
+    "id": "PROD_20260315201015",
+    "name": "Atlas Mundial",
+    "category": "Educativo",
+    "price": 55000,
+    "quantity": 6,
+    "isbn": "978-0-19-521050-7",
+    "supplier": "Santillana",
+    "created_at": "2026-03-15T20:10:15",
+    "updated_at": "2026-03-20T21:31:40"
+  },
+  {
+    "id": "PROD_20260315201516",
+    "name": "Compás escolar",
+    "category": "Papelería",
+    "price": 8000,
+    "quantity": 13,
+    "isbn": "",
+    "supplier": "Maped",
+    "created_at": "2026-03-15T20:15:16",
+    "updated_at": "2026-03-22T22:09:20.921154"
   }
 ]

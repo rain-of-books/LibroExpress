@@ -1,6 +1,7 @@
 # LibroExpress - Sistema de Gestión de Inventario
 
 ## Sprint 1: Módulo básico de inventario de productos
+## Sprint 2: Registro de ventas y recibos
 
 Sistema de gestión para la librería y papelería LibroExpress desarrollado con **Python** y **PySide6**, almacenando la información en archivos **JSON**.
 
@@ -38,6 +39,25 @@ Sistema de gestión para la librería y papelería LibroExpress desarrollado con
    - Sincronización con archivo JSON
    - Contador de productos en barra de estado
 
+### ✅ Funcionalidades Sprint 2
+
+1. **Registro de ventas**
+   - Selección de productos con stock disponible
+   - Ingreso de cantidades por producto
+   - Cálculo automático del total de la venta
+   - Selección de método de pago: efectivo o tarjeta
+   - Persistencia de ventas en `sales.json`
+
+2. **Actualización automática de stock**
+   - Descuento inmediato de inventario al confirmar la venta
+   - Validación para impedir ventas por encima del stock disponible
+   - Refresco de la tabla de productos en tiempo real
+
+3. **Generación de recibo**
+   - Ventana de comprobante con productos, cantidades y subtotales
+   - Visualización del total pagado y método de pago
+   - Resumen completo de la venta recién registrada
+
 ### 📋 Requisitos del Sistema
 
 - **Python 3.8+**
@@ -67,7 +87,9 @@ LibroExpress-sistem/
 │
 ├── main.py              # Aplicación principal con GUI PySide6
 ├── products.py          # Lógica de gestión de productos y JSON
+├── sales.py             # Lógica de ventas, recibos y descuento de stock
 ├── products.json        # Base de datos JSON con productos
+├── sales.json           # Base de datos JSON con ventas
 ├── requirements.txt     # Dependencias Python
 │
 └── README.md           # Documentación del proyecto
@@ -171,12 +193,6 @@ python test_system.py
 - **Recuperación de errores**: Sistema resiliente ante fallos
 
 ## 📝 Próximos Sprints
-
-**Sprint 2** podría incluir:
-- Gestión de clientes
-- Sistema de ventas
-- Reportes básicos
-- Backup automático
 
 **Sprint 3** podría incluir:
 - Gestión de proveedores
