@@ -65,6 +65,8 @@ class Sale:
 		self,
 		items: List[SaleItem],
 		payment_method: str,
+		client_document: str = "",
+		client_name: str = "",
 		sale_id: str = None,
 		created_at: str = None,
 		invoice_number: int = 0,
@@ -74,6 +76,8 @@ class Sale:
 		self.id = sale_id or self._generate_id()
 		self.items = items
 		self.payment_method = payment_method
+		self.client_document = client_document
+		self.client_name = client_name
 		self.total = sum(item.subtotal for item in items)
 		self.invoice_number = invoice_number
 		self.received_amount = received_amount
@@ -89,6 +93,8 @@ class Sale:
 		return {
 			"id": self.id,
 			"invoice_number": self.invoice_number,
+			"client_document": self.client_document,
+			"client_name": self.client_name,
 			"items": [item.to_dict() for item in self.items],
 			"payment_method": self.payment_method,
 			"received_amount": self.received_amount,
@@ -104,6 +110,8 @@ class Sale:
 		return cls(
 			items=items,
 			payment_method=data["payment_method"],
+			client_document=data.get("client_document", ""),
+			client_name=data.get("client_name", ""),
 			sale_id=data["id"],
 			created_at=data.get("created_at"),
 			invoice_number=data.get("invoice_number", 0),
@@ -138,6 +146,8 @@ def generate_receipt_text(sale) -> str:
 		f"Fecha: {date_str}",
 		f"Hora: {time_str}",
 		f"Factura No: {invoice_str}",
+		f"Cliente: {sale.client_name or 'No especificado'}",
+		f"Documento: {sale.client_document or 'No especificado'}",
 		"",
 		DASH,
 		f"{'Producto':<16}{'Cant':>4}{'Precio':>10}{'Subtotal':>10}",
@@ -222,6 +232,11 @@ class SaleManager:
 		"""Retorna una copia de las ventas registradas."""
 		return self.sales.copy()
 
+	def get_sales_by_client_document(self, document: str) -> List[Sale]:
+		"""Retorna las ventas asociadas a una cédula específica."""
+		normalized_document = document.strip()
+		return [sale for sale in self.sales if sale.client_document == normalized_document]
+
 	def get_next_invoice_number(self) -> int:
 		"""Retorna el próximo número de factura secuencial."""
 		return len(self.sales) + 1
@@ -233,7 +248,14 @@ class SaleManager:
 		receipt_path = folder / f"{sale.id}.txt"
 		receipt_path.write_text(generate_receipt_text(sale), encoding="utf-8")
 
-	def create_sale(self, items_data: List[Dict], payment_method: str, received_amount: float = 0.0) -> Sale:
+	def create_sale(
+		self,
+		items_data: List[Dict],
+		payment_method: str,
+		received_amount: float = 0.0,
+		client_document: str = "",
+		client_name: str = "",
+	) -> Sale:
 		"""Crea una venta, valida stock y actualiza el inventario."""
 		if payment_method not in self.VALID_PAYMENT_METHODS:
 			raise ValueError("El método de pago seleccionado no es válido.")
@@ -274,6 +296,8 @@ class SaleManager:
 		sale = Sale(
 			items=sale_items,
 			payment_method=payment_method,
+			client_document=client_document,
+			client_name=client_name,
 			invoice_number=invoice_number,
 			received_amount=received_amount,
 		)

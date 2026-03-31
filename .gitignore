@@ -69,4 +69,6 @@ Thumbs.db
 # Datos de ejecución locales
 
 sales.json
+clients.json
+suppliers.json
 recibos/
