@@ -137,18 +137,30 @@ Todos los modelos se serializan a JSON mediante métodos `to_dict()` / `from_dic
 }
 ```
 
-Los archivos `sales.json` y `recibos/` se excluyen del repositorio mediante `.gitignore` al contener datos de ejecución variable.
+Los archivos `sales.json`, `recibos/`, `restock_orders.json` y `ordenes_reabastecimiento/` se excluyen del repositorio mediante `.gitignore` al contener datos de ejecución variable.
 
 ---
 
-## Sprint 4 — Pendiente
+## Sprint 4 — Reabastecimiento y Reportes
 
-Funcionalidades planificadas para el siguiente ciclo:
+Historias implementadas en este sprint:
 
-- Control de stock mínimo con alertas visuales en inventario.
-- Exportación de datos (CSV / Excel / PDF).
-- Reportes avanzados de ventas por período.
-- Indicadores de clientes frecuentes.
+- **HU-10: Órdenes de reabastecimiento**
+  - Módulo para seleccionar proveedor, productos y cantidades.
+  - Creación y persistencia de órdenes en `restock_orders.json`.
+  - Generación automática de archivo `.txt` por orden en `ordenes_reabastecimiento/`.
+  - Visualización de órdenes guardadas y descarga manual del archivo para envío al proveedor.
+
+- **HU-11: Reportes de ventas por rango de fechas**
+  - Módulo de reportes con filtros de fecha inicial y final.
+  - Visualización tabular del detalle de ventas por producto:
+    ID venta, fecha, cliente, documento, producto, cantidad, precio unitario, subtotal y método de pago.
+  - Resumen en pantalla con número de ventas, subtotal, IVA y total.
+
+- **HU-12: Exportación de reportes**
+  - Exportación habilitada solo después de generar y visualizar el reporte.
+  - Formatos disponibles: CSV, Excel (`.xlsx`) y PDF.
+  - Motor de exportación desacoplado en `reports.py`.
 
 ---
 

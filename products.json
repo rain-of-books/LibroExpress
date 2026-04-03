@@ -3,45 +3,45 @@
     "id": "PROD_20260315120001",
     "name": "Cuaderno Universitario 200 hojas",
     "category": "Papelería",
-    "price": 15800,
+    "price": 15800.0,
     "quantity": 15,
     "isbn": "",
-    "supplier": "Papelería Panamericana",
+    "supplier": "Distribuidora Andina SAS",
     "created_at": "2026-03-15T12:00:00",
-    "updated_at": "2026-03-30T18:23:13.127058"
+    "updated_at": "2026-04-03T14:09:18.147378"
   },
   {
     "id": "PROD_20260315120002",
     "name": "Cien años de soledad",
     "category": "Literatura",
     "price": 58000,
-    "quantity": 8,
+    "quantity": 7,
     "isbn": "978-84-376-0494-7",
-    "supplier": "Grupo Editorial Planeta",
+    "supplier": "Distribuidora Andina SAS",
     "created_at": "2026-03-15T12:00:00",
-    "updated_at": "2026-03-15T12:00:00"
+    "updated_at": "2026-04-03T13:35:18.084019"
   },
   {
     "id": "PROD_20260315183617",
     "name": "fast y furius",
     "category": "acction",
     "price": 25900.0,
-    "quantity": 5,
+    "quantity": 4,
     "isbn": "",
-    "supplier": "ys-inc",
+    "supplier": "Distribuidora Andina SAS",
     "created_at": "2026-03-15T18:36:17.428254",
-    "updated_at": "2026-03-30T17:25:40.460848"
+    "updated_at": "2026-04-03T12:20:09.160699"
   },
   {
     "id": "PROD_20260315190502",
     "name": "Harry Potter y la Piedra Filosofal",
     "category": "Literatura",
     "price": 48000.0,
-    "quantity": 17,
+    "quantity": 16,
     "isbn": "978-84-670-0187-5",
-    "supplier": "Salamandra",
+    "supplier": "Distribuidora Andina SAS",
     "created_at": "2026-03-15T19:05:02",
-    "updated_at": "2026-03-30T17:25:40.460854"
+    "updated_at": "2026-04-03T13:52:25.780331"
   },
   {
     "id": "PROD_20260315191003",
@@ -50,7 +50,7 @@
     "price": 7800.0,
     "quantity": 12,
     "isbn": "",
-    "supplier": "Oficentro",
+    "supplier": "Papeleria Integral del Valle SAS",
     "created_at": "2026-03-15T19:10:03",
     "updated_at": "2026-03-22T22:10:38.904601"
   },
@@ -58,12 +58,12 @@
     "id": "PROD_20260315191504",
     "name": "El Principito",
     "category": "Literatura",
-    "price": 32000.0,
-    "quantity": 2,
+    "price": 35000.0,
+    "quantity": 20,
     "isbn": "978-2-07-061275-8",
-    "supplier": "Gallimard",
+    "supplier": "Distribuidora Andina SAS",
     "created_at": "2026-03-15T19:15:04",
-    "updated_at": "2026-03-22T22:16:34.352115"
+    "updated_at": "2026-04-03T13:58:36.786145"
   },
   {
     "id": "PROD_20260315192005",
@@ -72,7 +72,7 @@
     "price": 42000,
     "quantity": 9,
     "isbn": "978-0-19-953556-9",
-    "supplier": "Oxford",
+    "supplier": "Suministros Educativos Nacionales SAS",
     "created_at": "2026-03-15T19:20:05",
     "updated_at": "2026-03-30T17:20:10.142433"
   },
@@ -83,7 +83,7 @@
     "price": 65000,
     "quantity": 7,
     "isbn": "",
-    "supplier": "Casio",
+    "supplier": "Suministros Educativos Nacionales SAS",
     "created_at": "2026-03-15T19:25:06",
     "updated_at": "2026-03-20T21:30:10"
   },
@@ -94,7 +94,7 @@
     "price": 12500,
     "quantity": 20,
     "isbn": "",
-    "supplier": "Sharpie",
+    "supplier": "Papeleria Integral del Valle SAS",
     "created_at": "2026-03-15T19:35:08",
     "updated_at": "2026-03-20T21:30:30"
   },
@@ -102,12 +102,12 @@
     "id": "PROD_20260315201015",
     "name": "Atlas Mundial",
     "category": "Educativo",
-    "price": 55000,
-    "quantity": 1,
+    "price": 55000.0,
+    "quantity": 19,
     "isbn": "978-0-19-521050-7",
-    "supplier": "Santillana",
+    "supplier": "Suministros Educativos Nacionales SAS",
     "created_at": "2026-03-15T20:10:15",
-    "updated_at": "2026-03-30T17:25:40.460852"
+    "updated_at": "2026-04-03T13:57:13.250420"
   },
   {
     "id": "PROD_20260315201516",
@@ -116,7 +116,7 @@
     "price": 8000,
     "quantity": 10,
     "isbn": "",
-    "supplier": "Maped",
+    "supplier": "Papeleria Integral del Valle SAS",
     "created_at": "2026-03-15T20:15:16",
     "updated_at": "2026-03-30T17:20:10.142437"
   },
@@ -125,10 +125,10 @@
     "name": "papel  carbon",
     "category": "Papelería",
     "price": 5000.0,
-    "quantity": 21,
+    "quantity": 18,
     "isbn": "",
-    "supplier": "",
+    "supplier": "Papeleria Integral del Valle SAS",
     "created_at": "2026-03-30T17:17:34.606547",
-    "updated_at": "2026-03-30T17:18:36.765667"
+    "updated_at": "2026-04-03T13:42:52.234490"
   }
 ]

@@ -5,17 +5,20 @@ Sistema de gestión de inventario, ventas, clientes y proveedores con PySide6.
 
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QRegularExpression, Qt, QTimer
+from PySide6.QtCore import QDate, QRegularExpression, Qt, QTimer
 from PySide6.QtGui import QFont, QRegularExpressionValidator
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QComboBox,
+    QDateEdit,
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
+    QFileDialog,
     QFormLayout,
     QGroupBox,
     QHeaderView,
@@ -24,6 +27,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMainWindow,
     QMessageBox,
+    QPlainTextEdit,
     QPushButton,
     QSpinBox,
     QTableWidget,
@@ -35,6 +39,14 @@ from PySide6.QtWidgets import (
 
 from clients import ClientManager
 from products import ProductManager
+from reports import (
+    build_sales_report_rows,
+    export_sales_report_csv,
+    export_sales_report_excel,
+    export_sales_report_pdf,
+    summarize_sales_rows,
+)
+from restock import RestockOrderManager, generate_restock_order_text
 from sales import IVA_RATE, SaleManager, generate_receipt_text
 from suppliers import SupplierManager
 
@@ -728,9 +740,41 @@ class ReceiptDialog(QDialog):
         receipt_text.setPlainText(generate_receipt_text(self.sale))
         layout.addWidget(receipt_text)
 
+        actions_layout = QHBoxLayout()
+        actions_layout.addStretch()
+        print_button = QPushButton("Imprimir")
+        print_button.clicked.connect(self.download_receipt)
+        actions_layout.addWidget(print_button)
         close_button = QPushButton("Cerrar")
         close_button.clicked.connect(self.accept)
-        layout.addWidget(close_button, alignment=Qt.AlignRight)
+        actions_layout.addWidget(close_button)
+        layout.addLayout(actions_layout)
+
+    def download_receipt(self):
+        """Permite guardar el recibo .txt en la ubicación elegida por el usuario."""
+        default_name = f"{self.sale.id}_PRINT.txt"
+        save_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Guardar recibo para impresión",
+            default_name,
+            "Text Files (*.txt)",
+        )
+        if not save_path:
+            return
+
+        source_path = Path(self.sale.receipt_file) if self.sale.receipt_file else None
+        target_path = Path(save_path)
+
+        if source_path and source_path.exists():
+            target_path.write_text(source_path.read_text(encoding="utf-8"), encoding="utf-8")
+        else:
+            target_path.write_text(generate_receipt_text(self.sale), encoding="utf-8")
+
+        QMessageBox.information(
+            self,
+            "Recibo descargado",
+            f"El recibo quedó guardado en:\n{target_path.resolve()}",
+        )
 
 
 class PurchaseHistoryDialog(QDialog):
@@ -839,6 +883,502 @@ class PurchaseHistoryDialog(QDialog):
             ReceiptDialog(sale, self).exec()
 
 
+class RestockOrderDialog(QDialog):
+    """Módulo de reabastecimiento para crear y descargar órdenes."""
+
+    def __init__(self, product_manager, supplier_manager, restock_manager, parent=None):
+        super().__init__(parent)
+        self.product_manager = product_manager
+        self.supplier_manager = supplier_manager
+        self.restock_manager = restock_manager
+        self.selected_items = {}
+
+        self.setWindowTitle("Órdenes de Reabastecimiento")
+        self.setModal(True)
+        self.resize(980, 680)
+
+        self.setup_ui()
+        self.load_suppliers()
+        self.load_products()
+        self.load_orders()
+
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+
+        title_label = QLabel("Generación de órdenes de reabastecimiento")
+        title_font = QFont()
+        title_font.setPointSize(13)
+        title_font.setBold(True)
+        title_label.setFont(title_font)
+        layout.addWidget(title_label)
+
+        supplier_group = QGroupBox("Proveedor y productos")
+        supplier_layout = QVBoxLayout(supplier_group)
+
+        supplier_row = QHBoxLayout()
+        supplier_row.addWidget(QLabel("Proveedor:"))
+        self.supplier_combo = QComboBox()
+        self.supplier_combo.currentIndexChanged.connect(self.on_supplier_changed)
+        supplier_row.addWidget(self.supplier_combo, 1)
+        supplier_layout.addLayout(supplier_row)
+
+        product_row = QHBoxLayout()
+        product_row.addWidget(QLabel("Producto:"))
+        self.product_combo = QComboBox()
+        product_row.addWidget(self.product_combo, 1)
+        product_row.addWidget(QLabel("Cantidad:"))
+        self.quantity_spin = QSpinBox()
+        self.quantity_spin.setRange(1, 99999)
+        product_row.addWidget(self.quantity_spin)
+        self.add_item_btn = QPushButton("Agregar producto")
+        self.add_item_btn.clicked.connect(self.add_item)
+        product_row.addWidget(self.add_item_btn)
+        supplier_layout.addLayout(product_row)
+
+        self.items_table = QTableWidget()
+        self.items_table.setColumnCount(5)
+        self.items_table.setHorizontalHeaderLabels(["ID", "Producto", "Cantidad", "Precio", "Subtotal"])
+        self.items_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.items_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.items_table.setAlternatingRowColors(True)
+        self.items_table.setColumnHidden(0, True)
+        header = self.items_table.horizontalHeader()
+        header.setSectionResizeMode(1, QHeaderView.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        supplier_layout.addWidget(self.items_table)
+
+        notes_row = QHBoxLayout()
+        notes_row.addWidget(QLabel("Notas:"))
+        self.notes_edit = QLineEdit()
+        self.notes_edit.setPlaceholderText("Observaciones para el proveedor (opcional)")
+        notes_row.addWidget(self.notes_edit)
+        self.remove_item_btn = QPushButton("Quitar seleccionado")
+        self.remove_item_btn.clicked.connect(self.remove_item)
+        notes_row.addWidget(self.remove_item_btn)
+        supplier_layout.addLayout(notes_row)
+
+        action_row = QHBoxLayout()
+        action_row.addStretch()
+        self.create_order_btn = QPushButton("Crear orden")
+        self.create_order_btn.clicked.connect(self.create_order)
+        action_row.addWidget(self.create_order_btn)
+        supplier_layout.addLayout(action_row)
+        layout.addWidget(supplier_group)
+
+        orders_group = QGroupBox("Órdenes guardadas")
+        orders_layout = QVBoxLayout(orders_group)
+
+        self.orders_table = QTableWidget()
+        self.orders_table.setColumnCount(5)
+        self.orders_table.setHorizontalHeaderLabels(["ID", "Fecha", "Proveedor", "Total", "Archivo"])
+        self.orders_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.orders_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.orders_table.setAlternatingRowColors(True)
+        orders_header = self.orders_table.horizontalHeader()
+        orders_header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        orders_header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        orders_header.setSectionResizeMode(2, QHeaderView.Stretch)
+        orders_header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        orders_header.setSectionResizeMode(4, QHeaderView.Stretch)
+        orders_layout.addWidget(self.orders_table)
+
+        order_actions = QHBoxLayout()
+        self.preview_btn = QPushButton("Visualizar orden")
+        self.preview_btn.clicked.connect(self.preview_order)
+        self.download_btn = QPushButton("Descargar orden")
+        self.download_btn.clicked.connect(self.download_order)
+        self.delete_order_btn = QPushButton("Eliminar orden")
+        self.delete_order_btn.clicked.connect(self.delete_order)
+        order_actions.addStretch()
+        order_actions.addWidget(self.preview_btn)
+        order_actions.addWidget(self.download_btn)
+        order_actions.addWidget(self.delete_order_btn)
+        orders_layout.addLayout(order_actions)
+
+        layout.addWidget(orders_group)
+
+    def load_suppliers(self):
+        self.supplier_combo.clear()
+        suppliers = self.supplier_manager.get_all_suppliers()
+        for supplier in suppliers:
+            self.supplier_combo.addItem(supplier.name, supplier.id)
+
+    def load_products(self):
+        self.product_combo.clear()
+        supplier_id = self.supplier_combo.currentData()
+        supplier = self.supplier_manager.get_supplier_by_id(supplier_id) if supplier_id else None
+        supplier_name = supplier.name.strip() if supplier else ""
+        products = self.product_manager.get_all_products()
+        for product in products:
+            if supplier_name and product.supplier.strip().lower() != supplier_name.lower():
+                continue
+            label = f"{product.name} | Stock actual: {product.quantity} | ${product.price:,.0f}"
+            self.product_combo.addItem(label, product.id)
+
+        has_products = self.product_combo.count() > 0
+        self.add_item_btn.setEnabled(has_products)
+        self.product_combo.setEnabled(has_products)
+        self.quantity_spin.setEnabled(has_products)
+        if not has_products:
+            self.product_combo.addItem("No hay productos asociados a este proveedor", "")
+
+    def on_supplier_changed(self):
+        self.selected_items = {}
+        self.refresh_selected_items_table()
+        self.load_products()
+
+    def add_item(self):
+        product_id = self.product_combo.currentData()
+        product = self.product_manager.get_product_by_id(product_id)
+        if not product:
+            QMessageBox.warning(self, "Error", "Seleccione un producto válido.")
+            return
+
+        quantity = self.quantity_spin.value()
+        current_quantity = self.selected_items.get(product_id, {}).get("quantity", 0)
+        self.selected_items[product_id] = {
+            "product": product,
+            "quantity": current_quantity + quantity,
+        }
+        self.refresh_selected_items_table()
+
+    def remove_item(self):
+        selected_rows = self.items_table.selectionModel().selectedRows()
+        if not selected_rows:
+            QMessageBox.warning(self, "Error", "Seleccione una fila para quitar.")
+            return
+
+        row = selected_rows[0].row()
+        product_id = self.items_table.item(row, 0).text()
+        self.selected_items.pop(product_id, None)
+        self.refresh_selected_items_table()
+
+    def refresh_selected_items_table(self):
+        items = list(self.selected_items.values())
+        self.items_table.setRowCount(len(items))
+        for row, item in enumerate(items):
+            product = item["product"]
+            quantity = item["quantity"]
+            subtotal = product.price * quantity
+            self.items_table.setItem(row, 0, QTableWidgetItem(product.id))
+            self.items_table.setItem(row, 1, QTableWidgetItem(product.name))
+            self.items_table.setItem(row, 2, QTableWidgetItem(str(quantity)))
+            self.items_table.setItem(row, 3, QTableWidgetItem(f"${product.price:,.0f}"))
+            self.items_table.setItem(row, 4, QTableWidgetItem(f"${subtotal:,.0f}"))
+
+    def create_order(self):
+        supplier_id = self.supplier_combo.currentData()
+        if not supplier_id:
+            QMessageBox.warning(self, "Error", "Debe seleccionar un proveedor.")
+            return
+
+        if not self.selected_items:
+            QMessageBox.warning(self, "Error", "Debe agregar al menos un producto a la orden.")
+            return
+
+        items_data = [
+            {"product_id": product_id, "quantity": item["quantity"]}
+            for product_id, item in self.selected_items.items()
+        ]
+
+        try:
+            order = self.restock_manager.create_order(
+                supplier_id=supplier_id,
+                items_data=items_data,
+                notes=self.notes_edit.text().strip(),
+            )
+        except Exception as error:
+            QMessageBox.critical(self, "Error", f"No se pudo crear la orden: {error}")
+            return
+
+        QMessageBox.information(
+            self,
+            "Orden creada",
+            f"Orden {order.id} creada y guardada correctamente.",
+        )
+        self.selected_items = {}
+        self.notes_edit.clear()
+        self.refresh_selected_items_table()
+        self.load_orders()
+
+    def load_orders(self):
+        orders = self.restock_manager.get_all_orders()
+        self.orders_table.setRowCount(len(orders))
+        for row, order in enumerate(orders):
+            date_text = order.created_at.split("T")[0] if "T" in order.created_at else order.created_at
+            self.orders_table.setItem(row, 0, QTableWidgetItem(order.id))
+            self.orders_table.setItem(row, 1, QTableWidgetItem(date_text))
+            self.orders_table.setItem(row, 2, QTableWidgetItem(order.supplier_name))
+            self.orders_table.setItem(row, 3, QTableWidgetItem(f"${order.total:,.0f}"))
+            self.orders_table.setItem(row, 4, QTableWidgetItem(Path(order.file_path).name if order.file_path else "Sin archivo"))
+
+    def get_selected_order(self):
+        selected_rows = self.orders_table.selectionModel().selectedRows()
+        if not selected_rows:
+            return None
+        order_id = self.orders_table.item(selected_rows[0].row(), 0).text()
+        return self.restock_manager.get_order_by_id(order_id)
+
+    def preview_order(self):
+        order = self.get_selected_order()
+        if not order:
+            QMessageBox.warning(self, "Error", "Seleccione una orden para visualizar.")
+            return
+
+        preview = QDialog(self)
+        preview.setWindowTitle(f"Vista previa - {order.id}")
+        preview.setModal(True)
+        preview.resize(640, 520)
+        preview_layout = QVBoxLayout(preview)
+
+        text = QPlainTextEdit()
+        text.setReadOnly(True)
+        text.setPlainText(generate_restock_order_text(order))
+        preview_layout.addWidget(text)
+
+        close_btn = QPushButton("Cerrar")
+        close_btn.clicked.connect(preview.accept)
+        preview_layout.addWidget(close_btn, alignment=Qt.AlignRight)
+        preview.exec()
+
+    def download_order(self):
+        order = self.get_selected_order()
+        if not order:
+            QMessageBox.warning(self, "Error", "Seleccione una orden para descargar.")
+            return
+
+        if not order.file_path or not Path(order.file_path).exists():
+            QMessageBox.warning(self, "Error", "El archivo de la orden no está disponible.")
+            return
+
+        default_name = Path(order.file_path).name
+        save_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Guardar orden de reabastecimiento",
+            default_name,
+            "PDF Files (*.pdf)",
+        )
+        if not save_path:
+            return
+
+        Path(save_path).write_bytes(Path(order.file_path).read_bytes())
+        QMessageBox.information(self, "Descarga completa", "La orden fue descargada correctamente.")
+
+    def delete_order(self):
+        order = self.get_selected_order()
+        if not order:
+            QMessageBox.warning(self, "Error", "Seleccione una orden para eliminar.")
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Confirmar eliminación",
+            f"¿Desea eliminar la orden {order.id}? Esta acción no se puede deshacer.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        if not self.restock_manager.delete_order(order.id):
+            QMessageBox.warning(self, "Error", "No se pudo eliminar la orden seleccionada.")
+            return
+
+        self.load_orders()
+        QMessageBox.information(self, "Orden eliminada", "La orden fue eliminada correctamente.")
+
+
+class SalesReportDialog(QDialog):
+    """Módulo de reportes de ventas por rango de fechas y exportación."""
+
+    def __init__(self, sale_manager, parent=None):
+        super().__init__(parent)
+        self.sale_manager = sale_manager
+        self.current_rows = []
+
+        self.setWindowTitle("Reportes de Ventas")
+        self.setModal(True)
+        self.resize(1100, 680)
+
+        self.setup_ui()
+
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+
+        title_label = QLabel("Reporte de ventas por rango de fechas")
+        title_font = QFont()
+        title_font.setPointSize(13)
+        title_font.setBold(True)
+        title_label.setFont(title_font)
+        layout.addWidget(title_label)
+
+        filters_layout = QHBoxLayout()
+        filters_layout.addWidget(QLabel("Desde:"))
+        self.start_date_edit = QDateEdit()
+        self.start_date_edit.setCalendarPopup(True)
+        self.start_date_edit.setDate(QDate.currentDate().addDays(-30))
+        filters_layout.addWidget(self.start_date_edit)
+
+        filters_layout.addWidget(QLabel("Hasta:"))
+        self.end_date_edit = QDateEdit()
+        self.end_date_edit.setCalendarPopup(True)
+        self.end_date_edit.setDate(QDate.currentDate())
+        filters_layout.addWidget(self.end_date_edit)
+
+        self.generate_btn = QPushButton("Generar reporte")
+        self.generate_btn.clicked.connect(self.generate_report)
+        filters_layout.addWidget(self.generate_btn)
+        filters_layout.addStretch()
+        layout.addLayout(filters_layout)
+
+        self.report_table = QTableWidget()
+        self.report_table.setColumnCount(11)
+        self.report_table.setHorizontalHeaderLabels(
+            [
+                "ID Venta",
+                "Fecha",
+                "Cliente",
+                "Documento",
+                "Producto",
+                "Cantidad",
+                "Precio unitario",
+                "Subtotal",
+                "IVA",
+                "Total con IVA",
+                "Pago",
+            ]
+        )
+        self.report_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.report_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.report_table.setAlternatingRowColors(True)
+        header = self.report_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.Stretch)
+        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(6, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(7, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(8, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(9, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(10, QHeaderView.ResizeToContents)
+        layout.addWidget(self.report_table)
+
+        self.summary_label = QLabel("Genere el reporte para visualizar resultados.")
+        layout.addWidget(self.summary_label)
+
+        export_layout = QHBoxLayout()
+        export_layout.addStretch()
+        self.export_csv_btn = QPushButton("Exportar CSV")
+        self.export_excel_btn = QPushButton("Exportar Excel")
+        self.export_pdf_btn = QPushButton("Exportar PDF")
+        self.export_csv_btn.setEnabled(False)
+        self.export_excel_btn.setEnabled(False)
+        self.export_pdf_btn.setEnabled(False)
+        self.export_csv_btn.clicked.connect(self.export_csv)
+        self.export_excel_btn.clicked.connect(self.export_excel)
+        self.export_pdf_btn.clicked.connect(self.export_pdf)
+        export_layout.addWidget(self.export_csv_btn)
+        export_layout.addWidget(self.export_excel_btn)
+        export_layout.addWidget(self.export_pdf_btn)
+        layout.addLayout(export_layout)
+
+    def generate_report(self):
+        start_date = self.start_date_edit.date().toPython()
+        end_date = self.end_date_edit.date().toPython()
+        if start_date > end_date:
+            QMessageBox.warning(self, "Error", "La fecha inicial no puede ser mayor que la final.")
+            return
+
+        all_sales = self.sale_manager.get_all_sales()
+        self.current_rows = build_sales_report_rows(all_sales, start_date, end_date)
+        self.report_table.setRowCount(len(self.current_rows))
+
+        for row_index, row in enumerate(self.current_rows):
+            self.report_table.setItem(row_index, 0, QTableWidgetItem(row["sale_id"]))
+            self.report_table.setItem(row_index, 1, QTableWidgetItem(row["date"]))
+            self.report_table.setItem(row_index, 2, QTableWidgetItem(row["client"]))
+            self.report_table.setItem(row_index, 3, QTableWidgetItem(row["document"]))
+            self.report_table.setItem(row_index, 4, QTableWidgetItem(row["product"]))
+            self.report_table.setItem(row_index, 5, QTableWidgetItem(str(row["quantity"])))
+            self.report_table.setItem(row_index, 6, QTableWidgetItem(f"${row['unit_price']:,.0f}"))
+            self.report_table.setItem(row_index, 7, QTableWidgetItem(f"${row['subtotal']:,.0f}"))
+            self.report_table.setItem(row_index, 8, QTableWidgetItem(f"${row['iva']:,.0f}"))
+            self.report_table.setItem(row_index, 9, QTableWidgetItem(f"${row['total_with_iva']:,.0f}"))
+            self.report_table.setItem(row_index, 10, QTableWidgetItem(row["payment_method"]))
+
+        if not self.current_rows:
+            self.summary_label.setText("No se encontraron ventas en el rango seleccionado.")
+            self.set_export_enabled(False)
+            return
+
+        summary = summarize_sales_rows(self.current_rows)
+        self.summary_label.setText(
+            " | ".join(
+                [
+                    f"Ventas: {summary['sales']}",
+                    f"Líneas: {summary['lines']}",
+                    f"Subtotal: ${summary['net_total']:,.0f}",
+                    f"IVA: ${summary['iva_total']:,.0f}",
+                    f"Total con IVA: ${summary['gross_total']:,.0f}",
+                ]
+            )
+        )
+        self.set_export_enabled(True)
+
+    def set_export_enabled(self, enabled: bool):
+        self.export_csv_btn.setEnabled(enabled)
+        self.export_excel_btn.setEnabled(enabled)
+        self.export_pdf_btn.setEnabled(enabled)
+
+    def _get_period_label(self) -> str:
+        return f"{self.start_date_edit.date().toString('yyyy-MM-dd')} a {self.end_date_edit.date().toString('yyyy-MM-dd')}"
+
+    def export_csv(self):
+        if not self.current_rows:
+            return
+        default_name = f"reporte_ventas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        file_path, _ = QFileDialog.getSaveFileName(self, "Exportar reporte CSV", default_name, "CSV (*.csv)")
+        if not file_path:
+            return
+        export_sales_report_csv(self.current_rows, file_path)
+        QMessageBox.information(self, "Exportación completa", "El reporte CSV fue generado correctamente.")
+
+    def export_excel(self):
+        if not self.current_rows:
+            return
+        default_name = f"reporte_ventas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        file_path, _ = QFileDialog.getSaveFileName(self, "Exportar reporte Excel", default_name, "Excel (*.xlsx)")
+        if not file_path:
+            return
+        try:
+            export_sales_report_excel(self.current_rows, file_path)
+            QMessageBox.information(self, "Exportación completa", "El reporte Excel fue generado correctamente.")
+        except Exception as error:
+            QMessageBox.critical(self, "Error", f"No se pudo exportar a Excel: {error}")
+
+    def export_pdf(self):
+        if not self.current_rows:
+            return
+        default_name = f"reporte_ventas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        file_path, _ = QFileDialog.getSaveFileName(self, "Exportar reporte PDF", default_name, "PDF (*.pdf)")
+        if not file_path:
+            return
+        try:
+            export_sales_report_pdf(
+                self.current_rows,
+                file_path,
+                title="LibroExpress - Reporte de Ventas",
+                period_label=self._get_period_label(),
+            )
+            QMessageBox.information(self, "Exportación completa", "El reporte PDF fue generado correctamente.")
+        except Exception as error:
+            QMessageBox.critical(self, "Error", f"No se pudo exportar a PDF: {error}")
+
+
 class MainWindow(QMainWindow):
     """Ventana principal del sistema LibroExpress."""
 
@@ -848,6 +1388,7 @@ class MainWindow(QMainWindow):
         self.client_manager = ClientManager()
         self.supplier_manager = SupplierManager()
         self.sale_manager = SaleManager(self.product_manager)
+        self.restock_manager = RestockOrderManager(self.product_manager, self.supplier_manager)
         self.setup_ui()
         self.load_products()
 
@@ -901,6 +1442,10 @@ class MainWindow(QMainWindow):
         self.history_btn.clicked.connect(self.show_purchase_history)
         self.supplier_btn = QPushButton("Proveedores")
         self.supplier_btn.clicked.connect(self.manage_suppliers)
+        self.restock_btn = QPushButton("Reabastecimiento")
+        self.restock_btn.clicked.connect(self.manage_restock)
+        self.sales_report_btn = QPushButton("Reportes Ventas")
+        self.sales_report_btn.clicked.connect(self.show_sales_reports)
         self.refresh_btn = QPushButton("Actualizar")
         self.refresh_btn.clicked.connect(self.refresh_products)
 
@@ -910,6 +1455,8 @@ class MainWindow(QMainWindow):
         button_layout.addWidget(self.sale_btn)
         button_layout.addWidget(self.history_btn)
         button_layout.addWidget(self.supplier_btn)
+        button_layout.addWidget(self.restock_btn)
+        button_layout.addWidget(self.sales_report_btn)
         button_layout.addWidget(self.refresh_btn)
         button_layout.addStretch()
         main_layout.addLayout(button_layout)
@@ -1049,6 +1596,17 @@ class MainWindow(QMainWindow):
 
     def manage_suppliers(self):
         SupplierManagementDialog(self.supplier_manager, self).exec()
+
+    def manage_restock(self):
+        RestockOrderDialog(
+            self.product_manager,
+            self.supplier_manager,
+            self.restock_manager,
+            self,
+        ).exec()
+
+    def show_sales_reports(self):
+        SalesReportDialog(self.sale_manager, self).exec()
 
     def refresh_products(self):
         self.product_manager.load_products()

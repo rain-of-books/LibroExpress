@@ -71,4 +71,11 @@ Thumbs.db
 sales.json
 clients.json
 suppliers.json
+restock_orders.json
 recibos/
+ordenes_reabastecimiento/
+
+# Exportaciones de reportes
+reporte_ventas_*.csv
+reporte_ventas_*.xlsx
+reporte_ventas_*.pdf
