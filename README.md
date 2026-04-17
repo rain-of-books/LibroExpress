@@ -11,6 +11,9 @@ Sistema de escritorio para la gestión de inventario, ventas, clientes y proveed
 
 ## Instalación
 
+> [!IMPORTANT]
+> Se recomienda trabajar siempre dentro del entorno virtual `venv` para evitar conflictos de dependencias entre PySide6, pytest y pywinauto.
+
 ```bash
 # 1. Crear entorno virtual
 python -m venv venv
@@ -23,6 +26,9 @@ pip install -r requirements.txt
 # 3. Ejecutar la aplicación
 python main.py
 ```
+
+> [!TIP]
+> En Windows puedes activar el entorno con `venv\Scripts\activate` en `cmd` o con `venv\Scripts\Activate` en PowerShell.
 
 ---
 
@@ -52,6 +58,9 @@ El proyecto sigue una separación en dos capas:
 
 - **Capa de dominio** (`products.py`, `sales.py`, `clients.py`, `suppliers.py`): modelos de datos, lógica de negocio y acceso/persistencia JSON. Cada módulo expone una clase `Manager` con métodos CRUD e identificadores únicos con formato `PREFIJO_AAAAMMDDHHMMSSXXXXXX`.
 - **Capa de presentación** (`main.py`): clases `QDialog` y `QMainWindow` de PySide6. Cada operación de negocio se delega al `Manager` correspondiente; la UI solo gestiona entrada/salida de datos.
+
+> [!NOTE]
+> La lógica crítica del negocio se mantiene fuera de la interfaz gráfica. Esto permite probar los módulos con tests unitarios sin depender de PySide6 ni de interacción visual.
 
 ---
 
@@ -139,6 +148,9 @@ Todos los modelos se serializan a JSON mediante métodos `to_dict()` / `from_dic
 
 Los archivos `sales.json`, `recibos/`, `restock_orders.json` y `ordenes_reabastecimiento/` se excluyen del repositorio mediante `.gitignore` al contener datos de ejecución variable.
 
+> [!WARNING]
+> Los archivos JSON del proyecto representan el estado operativo de la aplicación. Si se modifican manualmente con formato inválido o datos inconsistentes, algunos módulos pueden fallar al cargar información.
+
 ---
 
 ## Sprint 4 — Reabastecimiento y Reportes
@@ -161,6 +173,380 @@ Historias implementadas en este sprint:
   - Exportación habilitada solo después de generar y visualizar el reporte.
   - Formatos disponibles: CSV, Excel (`.xlsx`) y PDF.
   - Motor de exportación desacoplado en `reports.py`.
+
+---
+
+## Sprint 5 — Vista General (Dashboard Ejecutivo)
+
+Historias implementadas en este sprint:
+
+- **HU-13: Dashboard de indicadores del negocio**
+  - Módulo **Vista General** accesible desde la ventana principal para el rol gerente.
+  - Indicadores resumidos en pantalla:
+    - **Ventas del dia** (monto con IVA y cantidad de ventas del dia seleccionado).
+    - **Producto mas vendido** (por unidades del dia seleccionado; vacio si no hay ventas).
+    - **Total ingresos (rango)** (ventas con IVA filtradas por fecha desde/hasta).
+  - Estadisticas generales de apoyo: total de ventas del rango, total de unidades vendidas en el rango y periodo consultado.
+  - Logica de calculo desacoplada en `reports.py` mediante `build_dashboard_metrics`, reutilizable y cubierta con pruebas unitarias.
+  - Se añadieron estilos visuales (CSS/PySide6 QSS) al programa para mejorar la experiencia de usuario en la interfaz del dashboard y formularios.
+  - Se crearon pruebas unitarias adicionales para validar el comportamiento del dashboard y la consistencia de los indicadores.
+
+---
+
+## Pruebas Automatizadas UI
+
+La carpeta `libroexpress_tests/pywinauto_tests` contiene la suite de automatizacion visual de los modulos de productos, ventas, clientes, historial de compras, proveedores y reabastecimiento usando **pywinauto**. La suite prioriza flujos visibles, lineales y reproducibles para dejar evidencia clara del comportamiento del sistema.
+
+> [!IMPORTANT]
+> Las pruebas se ejecutan sobre una copia temporal del proyecto para no alterar los datos reales del repositorio. El orden de ejecucion es intencional y sigue el flujo funcional solicitado para la entrega.
+
+### Objetivo de la suite
+
+- Validar el flujo visible de productos, ventas, clientes, historial de compras, proveedores y reabastecimiento desde la interfaz real.
+- Confirmar que cada accion ejecutada en la UI deja el estado esperado en los archivos `products.json`, `clients.json`, `sales.json`, `suppliers.json` y `restock_orders.json` cuando aplica.
+- Ejecutar cada prueba en una copia temporal del proyecto para no alterar los datos reales del repositorio.
+
+### Aislamiento de pruebas
+
+El fixture `isolated_project` en `libroexpress_tests/pywinauto_tests/tests/conftest.py` crea una copia temporal del proyecto, reinicia los archivos `products.json`, `clients.json`, `suppliers.json`, `sales.json` y `restock_orders.json` a `[]`, y elimina esa copia al finalizar la prueba. Esto garantiza que los robots no modifiquen los JSON reales del sistema.
+
+> [!NOTE]
+> Gracias a este aislamiento, los robots pueden crear, editar y eliminar datos sin contaminar el estado real del proyecto ni afectar evidencia previa almacenada en el repositorio.
+
+### Alcance de este listado
+
+Esta lista describe únicamente los casos de la suite de pruebas UI basada en `pywinauto`, ubicada en `libroexpress_tests/pywinauto_tests/tests/`.
+
+El proyecto también contiene una suite de pruebas unitarias independientes en `libroexpress_tests/unit_tests/tests/`, con archivos como:
+
+- `test_products.py`
+- `test_suppliers.py`
+- `test_clients.py`
+- `test_sales.py`
+- `test_restock.py`
+- `test_reports.py`
+
+Para ejecutar todas las pruebas unitarias use:
+
+```bash
+python -m pytest libroexpress_tests/unit_tests/tests -q
+```
+
+### Orden oficial de ejecucion
+
+La suite fuerza el siguiente orden mediante `pytest_collection_modifyitems`:
+
+1. `test_editar_producto_valido.py`
+2. `test_producto_invalido_sin_nombre.py`
+3. `test_crear_y_eliminar_producto_valido.py`
+4. `test_registro_venta_sin_cliente.py`
+5. `test_registro_cliente_sin_telefono.py`
+6. `test_registro_cliente_valido.py`
+7. `test_registro_venta_monto_insuficiente.py`
+8. `test_registro_venta_valida.py`
+9. `test_historial_compras_sin_cedula.py`
+10. `test_historial_compras_con_cedula.py`
+11. `test_editar_proveedor_existente.py`
+12. `test_reabastecimiento_visualizacion_inicial.py`
+13. `test_reabastecimiento_crear_orden_valida.py`
+14. `test_reabastecimiento_visualizar_orden.py`
+15. `test_reabastecimiento_eliminar_orden.py`
+
+Este orden se definio para reflejar el flujo funcional solicitado y evitar redundancia entre escenarios.
+
+> [!TIP]
+> Si necesitas comprobar rapidamente que el orden sigue correcto, usa `python -m pytest libroexpress_tests/pywinauto_tests/tests -vv --collect-only`.
+
+### Escenarios documentados
+
+#### 1. Edicion valida de producto
+
+Archivo: `libroexpress_tests/pywinauto_tests/tests/test_editar_producto_valido.py`
+
+Flujo validado:
+
+- Crea un producto valido desde la ventana principal.
+- Cierra la aplicacion y la vuelve a abrir.
+- Busca el producto por nombre exacto.
+- Edita **categoria**, **precio**, **ISBN** y **proveedor** sin cambiar el nombre.
+- Verifica en `products.json` que el producto sigue existiendo y que los nuevos valores fueron persistidos correctamente.
+
+Datos esperados al final:
+
+- El nombre permanece igual.
+- La categoria cambia a `Utiles`.
+- El precio cambia a `25000`.
+- El ISBN cambia a `9781234567890`.
+- El proveedor cambia a `Proveedor Editado`.
+
+#### 2. Producto invalido sin nombre
+
+Archivo: `libroexpress_tests/pywinauto_tests/tests/test_producto_invalido_sin_nombre.py`
+
+Flujo validado:
+
+- Abre el formulario de nuevo producto.
+- Intenta guardar el producto sin diligenciar el nombre.
+- Captura el mensaje de error o validacion mostrado por la UI.
+- Verifica que `products.json` siga vacio.
+
+Resultado esperado:
+
+- La interfaz rechaza el registro.
+- El mensaje contiene alguna referencia a error, validacion, nombre u obligatoriedad del campo.
+- No se persiste ningun producto.
+
+#### 3. Creacion y eliminacion de producto valido
+
+Archivo: `libroexpress_tests/pywinauto_tests/tests/test_crear_y_eliminar_producto_valido.py`
+
+Flujo validado:
+
+- Crea un producto valido desde la UI.
+- Cierra la aplicacion y la vuelve a abrir.
+- Confirma que el producto fue persistido.
+- Busca el producto por nombre exacto.
+- Ejecuta la eliminacion desde el boton de la interfaz.
+- Verifica que `products.json` quede vacio despues de eliminar.
+
+Resultado esperado:
+
+- El producto existe despues de la creacion.
+- El producto desaparece despues de la eliminacion.
+- La persistencia queda consistente con la accion visual ejecutada.
+
+#### 4. Registro de venta sin cliente
+
+Archivo: `libroexpress_tests/pywinauto_tests/tests/test_registro_venta_sin_cliente.py`
+
+Flujo validado:
+
+- El sistema inicia con el producto editado ya cargado en `products.json`.
+- Se abre el modulo `Registrar Venta`.
+- Se busca el producto `Producto Valido` y se agrega a la venta.
+- Se escribe un monto recibido valido para la transaccion.
+- Se intenta confirmar la venta sin haber buscado ni registrado un cliente.
+
+Resultado esperado:
+
+- La interfaz bloquea la venta por falta de cliente.
+- `sales.json` permanece vacio.
+
+#### 4.1 Registro de cliente sin telefono desde ventas
+
+Archivo: `libroexpress_tests/pywinauto_tests/tests/test_registro_cliente_sin_telefono.py`
+
+Flujo validado:
+
+- Desde `Registrar Venta` se abre el formulario `Registrar Cliente`.
+- Se diligencian nombre, documento y correo.
+- El campo telefono se deja vacio.
+- Se intenta guardar el cliente.
+
+Resultado esperado:
+
+- La interfaz muestra error o validacion por campo obligatorio.
+- `clients.json` permanece vacio.
+
+#### 4.2 Registro de cliente valido desde ventas
+
+Archivo: `libroexpress_tests/pywinauto_tests/tests/test_registro_cliente_valido.py`
+
+Flujo validado:
+
+- Desde `Registrar Venta` se abre `Registrar Cliente`.
+- Se diligencian todos los campos requeridos correctamente.
+- Se guarda el cliente y luego se cierra el sistema.
+
+Resultado esperado:
+
+- El cliente se persiste en `clients.json`.
+- La operacion termina con confirmacion exitosa.
+
+#### 4.3 Venta invalida por monto insuficiente
+
+Archivo: `libroexpress_tests/pywinauto_tests/tests/test_registro_venta_monto_insuficiente.py`
+
+Flujo validado:
+
+- El sistema inicia con un cliente valido y el producto `Producto Valido` ya cargados.
+- En `Registrar Venta` se busca el cliente existente.
+- Se busca el producto y se agrega a la venta.
+- En `Resumen de la venta`, campo `Monto recibido`, se escribe `25000`.
+- Se intenta confirmar la venta.
+
+Resultado esperado:
+
+- La interfaz rechaza la venta por monto insuficiente.
+- `sales.json` permanece vacio.
+- El stock del producto no cambia.
+
+#### 4.4 Venta valida con cliente existente
+
+Archivo: `libroexpress_tests/pywinauto_tests/tests/test_registro_venta_valida.py`
+
+Flujo validado:
+
+- El sistema inicia con un cliente valido y el producto `Producto Valido` ya cargados.
+- En `Registrar Venta` se busca el cliente existente por cédula.
+- Se busca el producto y se agrega a la venta.
+- En `Resumen de la venta`, campo `Monto recibido`, se escribe `30000`.
+- Se confirma la venta y se cierra el comprobante generado.
+
+Resultado esperado:
+
+- La venta se persiste en `sales.json`.
+- El producto queda registrado dentro de la venta.
+- El stock baja de `5` a `4`.
+- El flujo termina con comprobante de venta valido.
+
+#### 5. Historial de compras sin cedula
+
+Archivo: `libroexpress_tests/pywinauto_tests/tests/test_historial_compras_sin_cedula.py`
+
+Flujo validado:
+
+- El sistema inicia con el producto `Producto Valido` ya actualizado luego del flujo de venta.
+- Se abre el modulo `Historial Compras`.
+- Se pulsa `Buscar` sin ingresar cédula.
+- Se captura el mensaje de error o validacion mostrado por la interfaz.
+
+Resultado esperado:
+
+- La interfaz bloquea la busqueda sin documento.
+- El sistema muestra un mensaje de error o validacion.
+- El flujo se cierra sin alterar ventas ni clientes.
+
+#### 5.1 Historial de compras con cedula
+
+Archivo: `libroexpress_tests/pywinauto_tests/tests/test_historial_compras_con_cedula.py`
+
+Flujo validado:
+
+- El sistema inicia con cliente, producto y venta ya cargados.
+- Se abre `Historial Compras`.
+- Se escribe la cédula del cliente existente.
+- Se pulsa `Buscar` y luego `Ver Factura` para ejecutar el flujo visual completo.
+
+Resultado esperado:
+
+- La tabla del historial muestra al menos una compra asociada al cliente.
+- El flujo de visualizacion se ejecuta sin bloquear la prueba.
+
+#### 6. Edicion de proveedor existente
+
+Archivo: `libroexpress_tests/pywinauto_tests/tests/test_editar_proveedor_existente.py`
+
+Flujo validado:
+
+- El sistema inicia con un proveedor existente llamado `Proveedor Editado` asociado a `Producto Valido`.
+- Se abre el modulo `Proveedores`.
+- Se selecciona el proveedor existente y se pulsa `Editar`.
+- Se completan los campos `telefono`, `correo` y `direccion`.
+- Se guarda y se cierra el flujo.
+
+Resultado esperado:
+
+- La interfaz permite completar la informacion faltante del proveedor.
+- El flujo termina sin bloqueo y con confirmacion visual.
+
+#### 7. Reabastecimiento sin productos agregados
+
+Archivo: `libroexpress_tests/pywinauto_tests/tests/test_reabastecimiento_visualizacion_inicial.py`
+
+Flujo validado:
+
+- El sistema inicia con `Proveedor Editado` y `Producto Valido` asociados.
+- Se abre el modulo `Reabastecimiento`.
+- Se pulsa `Crear orden` sin agregar productos a la orden.
+- Se captura el mensaje de error o validacion.
+
+Resultado esperado:
+
+- La interfaz rechaza la creacion de la orden vacia.
+- El flujo se cierra correctamente despues del mensaje.
+
+#### 7.1 Creacion valida de orden de reabastecimiento
+
+Archivo: `libroexpress_tests/pywinauto_tests/tests/test_reabastecimiento_crear_orden_valida.py`
+
+Flujo validado:
+
+- Se abre `Reabastecimiento`.
+- Se agrega `Producto Valido` a la orden.
+- Se pulsa `Crear orden`.
+- Se captura el mensaje de confirmacion y se cierra el flujo.
+
+Resultado esperado:
+
+- La orden se crea correctamente.
+- `restock_orders.json` registra al menos una orden.
+
+#### 7.2 Visualizacion de orden creada
+
+Archivo: `libroexpress_tests/pywinauto_tests/tests/test_reabastecimiento_visualizar_orden.py`
+
+Flujo validado:
+
+- Se abre `Reabastecimiento`.
+- Se selecciona una orden ya creada en la tabla de ordenes guardadas.
+- Se pulsa `Visualizar orden`.
+- Se ejecuta el flujo de vista previa y luego se cierra.
+
+Resultado esperado:
+
+- La interfaz permite ejecutar el flujo de visualizacion de la orden seleccionada.
+- La prueba valida el recorrido completo sin depender estrictamente de la detección del popup por UIA.
+
+#### 7.3 Eliminacion de orden creada
+
+Archivo: `libroexpress_tests/pywinauto_tests/tests/test_reabastecimiento_eliminar_orden.py`
+
+Flujo validado:
+
+- Se abre `Reabastecimiento`.
+- Se selecciona una orden ya creada.
+- Se pulsa `Eliminar orden`.
+- Ante el dialogo de confirmacion se confirma con `Yes` y se cierra el mensaje final.
+
+Resultado esperado:
+
+- La orden se elimina del sistema.
+- El flujo contempla fallback por teclado para confirmar `Yes` cuando el cuadro de confirmacion no es detectable por UIA.
+
+### Soporte de automatizacion agregado en la app
+
+Para hacer estable el escenario de eliminacion automatizada, `main.py` incluye dos ayudas de interfaz:
+
+- Soporte de busqueda exacta para que un nombre buscado deje listo el producto correcto para editar o eliminar.
+- Confirmacion automatica del dialogo de borrado cuando la app se ejecuta con la variable de entorno `LIBROEXPRESS_UI_AUTO_CONFIRM_DELETE=1`.
+
+Esta variable se establece unicamente al lanzar la app desde `libroexpress_tests/pywinauto_tests/pages/main_window.py`, por lo que el comportamiento normal para uso manual no cambia.
+
+> [!CAUTION]
+> La confirmacion automatica de eliminacion existe solo para la ejecucion controlada de robots UI. No debe reutilizarse como atajo funcional fuera del contexto de pruebas automatizadas.
+
+### Ejecucion en consola
+
+Desde la raiz del proyecto:
+
+```bash
+venv\Scripts\activate
+python -m pytest libroexpress_tests/pywinauto_tests/tests -vv
+```
+
+Para verificar solo el orden recolectado por `pytest`:
+
+```bash
+python -m pytest libroexpress_tests/pywinauto_tests/tests -vv --collect-only
+```
+
+### Cobertura intencional
+
+La suite UI actual cubre los flujos lineales definidos para productos, ventas, clientes, historial de compras, proveedores y reabastecimiento. En algunos escenarios se prioriza la validacion del recorrido visual completo sobre la inspeccion estricta de popups cuando Pywinauto presenta limitaciones de detección en ciertos dialogos modales.
+
+> [!WARNING]
+> Ejecutar pruebas pywinauto mientras manipulas manualmente la misma ventana puede interferir con el foco, los dialogos y el resultado de la automatizacion.
 
 ---
 

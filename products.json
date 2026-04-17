@@ -23,8 +23,8 @@
   },
   {
     "id": "PROD_20260315183617",
-    "name": "fast y furius",
-    "category": "acction",
+    "name": "Fast y Furious",
+    "category": "Acción",
     "price": 25900.0,
     "quantity": 4,
     "isbn": "",
@@ -37,15 +37,15 @@
     "name": "Harry Potter y la Piedra Filosofal",
     "category": "Literatura",
     "price": 48000.0,
-    "quantity": 16,
+    "quantity": 15,
     "isbn": "978-84-670-0187-5",
     "supplier": "Distribuidora Andina SAS",
     "created_at": "2026-03-15T19:05:02",
-    "updated_at": "2026-04-03T13:52:25.780331"
+    "updated_at": "2026-04-08T09:41:44.944638"
   },
   {
     "id": "PROD_20260315191003",
-    "name": "Resaltadores fluorescentes x4",
+    "name": "Resaltadores Fluorescentes x4",
     "category": "Papelería",
     "price": 7800.0,
     "quantity": 12,
@@ -59,11 +59,11 @@
     "name": "El Principito",
     "category": "Literatura",
     "price": 35000.0,
-    "quantity": 20,
+    "quantity": 12,
     "isbn": "978-2-07-061275-8",
     "supplier": "Distribuidora Andina SAS",
     "created_at": "2026-03-15T19:15:04",
-    "updated_at": "2026-04-03T13:58:36.786145"
+    "updated_at": "2026-04-04T16:02:00.278120"
   },
   {
     "id": "PROD_20260315192005",
@@ -111,7 +111,7 @@
   },
   {
     "id": "PROD_20260315201516",
-    "name": "Compás escolar",
+    "name": "Compás Escolar",
     "category": "Papelería",
     "price": 8000,
     "quantity": 10,
@@ -122,13 +122,13 @@
   },
   {
     "id": "PROD_20260330171734",
-    "name": "papel  carbon",
+    "name": "Papel Carbón",
     "category": "Papelería",
     "price": 5000.0,
-    "quantity": 18,
+    "quantity": 15,
     "isbn": "",
     "supplier": "Papeleria Integral del Valle SAS",
     "created_at": "2026-03-30T17:17:34.606547",
-    "updated_at": "2026-04-03T13:42:52.234490"
+    "updated_at": "2026-04-04T16:02:46.086646"
   }
 ]

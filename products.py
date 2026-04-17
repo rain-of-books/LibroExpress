@@ -26,7 +26,7 @@ class Product:
     
     def _generate_id(self) -> str:
         """Genera un ID único para el producto"""
-        return f"PROD_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        return f"PROD_{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
     
     def to_dict(self) -> Dict:
         """Convierte el producto a diccionario para JSON"""
@@ -151,7 +151,20 @@ class ProductManager:
             if product.id == product_id:
                 return product
         return None
-    
+
+    def clear_supplier_reference(self, supplier_name: str) -> int:
+        """Elimina la referencia a un proveedor de todos los productos."""
+        normalized_name = supplier_name.strip().lower()
+        count = 0
+        for product in self.products:
+            if product.supplier.strip().lower() == normalized_name:
+                product.supplier = ""
+                product.updated_at = datetime.now().isoformat()
+                count += 1
+        if count:
+            self.save_products()
+        return count
+
     def get_categories(self) -> List[str]:
         """Obtiene todas las categorías únicas"""
         categories = set()

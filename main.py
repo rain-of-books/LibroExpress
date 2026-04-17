@@ -4,12 +4,13 @@ Sistema de gestión de inventario, ventas, clientes y proveedores con PySide6.
 """
 
 import re
+import os
 import sys
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 from PySide6.QtCore import QDate, QRegularExpression, Qt, QTimer
-from PySide6.QtGui import QFont, QRegularExpressionValidator
+from PySide6.QtGui import QFont, QIcon, QPixmap, QRegularExpressionValidator
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -29,6 +30,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QSizePolicy,
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
@@ -40,6 +42,7 @@ from PySide6.QtWidgets import (
 from clients import ClientManager
 from products import ProductManager
 from reports import (
+    build_dashboard_metrics,
     build_sales_report_rows,
     export_sales_report_csv,
     export_sales_report_excel,
@@ -54,6 +57,283 @@ from suppliers import SupplierManager
 def is_valid_email(email: str) -> bool:
     """Valida un correo con una expresión regular simple."""
     return bool(re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email.strip()))
+
+
+def get_program_icon() -> QIcon:
+    """Retorna el icono principal del programa con fallback seguro."""
+    icon_candidates = [
+        Path(__file__).resolve().parent / "imagenes" / "main.ico",
+        Path.cwd() / "imagenes" / "main.ico",
+        Path(__file__).resolve().parent / "imagenes" / "main.png",
+        Path.cwd() / "imagenes" / "main.png",
+        Path(__file__).resolve().parent / "imagenes" / "appicon.ico",
+    ]
+
+    for icon_path in icon_candidates:
+        if not icon_path.exists():
+            continue
+        icon = QIcon(str(icon_path))
+        if not icon.isNull():
+            return icon
+
+    return QIcon()
+
+
+class StartScreenDialog(QDialog):
+    """Pantalla de inicio previa al sistema principal."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Bienvenido a LibroExpress")
+        self.setModal(True)
+        self.setMinimumSize(980, 640)
+
+        icon = get_program_icon()
+        if not icon.isNull():
+            self.setWindowIcon(icon)
+
+        self.setup_ui()
+
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(36, 30, 36, 26)
+        layout.setSpacing(18)
+
+        logo_label = QLabel()
+        logo_label.setAlignment(Qt.AlignCenter)
+
+        logo_candidates = [
+            Path(__file__).resolve().parent / "imagenes" / "appicon.ico",
+            Path.cwd() / "imagenes" / "appicon.ico",
+        ]
+
+        logo_pixmap = QPixmap()
+        for candidate in logo_candidates:
+            if not candidate.exists():
+                continue
+            icon = QIcon(str(candidate))
+            logo_pixmap = icon.pixmap(240, 240)
+            if logo_pixmap.isNull():
+                logo_pixmap = QPixmap(str(candidate)).scaled(240, 240, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            if not logo_pixmap.isNull():
+                break
+
+        if not logo_pixmap.isNull():
+            logo_label.setPixmap(logo_pixmap)
+        else:
+            logo_label.setText("LibroExpress")
+            logo_label.setStyleSheet("font-size: 28pt; font-weight: 700; color: #2f6f9f;")
+
+        layout.addWidget(logo_label)
+
+        subtitle_label = QLabel("Bienvenidos a LibroExpress. Tu espacio para gestionar y crecer.")
+        subtitle_label.setAlignment(Qt.AlignCenter)
+        subtitle_label.setStyleSheet("font-size: 13pt; color: #2e4a62;")
+        layout.addWidget(subtitle_label)
+
+        start_button = QPushButton("Iniciar")
+        start_button.setMinimumHeight(48)
+        start_button.setFixedWidth(220)
+        start_button.clicked.connect(self.accept)
+
+        button_row = QHBoxLayout()
+        button_row.addStretch()
+        button_row.addWidget(start_button)
+        button_row.addStretch()
+        layout.addLayout(button_row)
+
+        legal_text = (
+            "© 2026 LibroExpress. Todos los derechos reservados. LibroExpress y su logotipo son marcas "
+            "de uso academico del proyecto de Ingenieria de Software III. Otras marcas, nombres de "
+            "productos y contenidos mencionados pertenecen a sus respectivos propietarios."
+        )
+        legal_label = QLabel(legal_text)
+        legal_label.setWordWrap(True)
+        legal_label.setAlignment(Qt.AlignCenter)
+        legal_label.setStyleSheet("color: #4a5f71; font-size: 10.5pt;")
+        layout.addWidget(legal_label)
+
+        legal_links_label = QLabel(
+            '<a href="privacy" style="color:#0b57d0; text-decoration: underline; font-weight:600;">Politica de privacidad</a>  |  '
+            '<a href="terms" style="color:#0b57d0; text-decoration: underline; font-weight:600;">Terminos y condiciones</a>  |  '
+            '<a href="license" style="color:#0b57d0; text-decoration: underline; font-weight:600;">Licencia</a>'
+        )
+        legal_links_label.setAlignment(Qt.AlignCenter)
+        legal_links_label.setStyleSheet("font-size: 11pt;")
+        legal_links_label.setOpenExternalLinks(False)
+        legal_links_label.linkActivated.connect(self.open_legal_document)
+        layout.addWidget(legal_links_label)
+
+    def open_legal_document(self, link_key: str):
+        docs_map = {
+            "privacy": ("Politica de privacidad", Path("documentacionlegal") / "politica_de_privacidad.md"),
+            "terms": ("Terminos y condiciones", Path("documentacionlegal") / "terminos_y_condiciones.md"),
+            "license": ("Licencia", Path("documentacionlegal") / "licencia.md"),
+        }
+
+        title, relative_path = docs_map.get(link_key, ("Documento legal", None))
+        if relative_path is None:
+            return
+
+        candidate_paths = [
+            Path(__file__).resolve().parent / relative_path,
+            Path.cwd() / relative_path,
+        ]
+
+        document_text = "No se pudo cargar el documento solicitado."
+        for candidate in candidate_paths:
+            if candidate.exists():
+                document_text = candidate.read_text(encoding="utf-8")
+                break
+
+        viewer = QDialog(self)
+        viewer.setWindowTitle(title)
+        viewer.setModal(True)
+        viewer.resize(880, 620)
+
+        viewer_layout = QVBoxLayout(viewer)
+        text_box = QPlainTextEdit()
+        text_box.setReadOnly(True)
+        text_box.setPlainText(document_text)
+        viewer_layout.addWidget(text_box)
+
+        close_button = QPushButton("Cerrar")
+        close_button.clicked.connect(viewer.accept)
+        viewer_layout.addWidget(close_button, alignment=Qt.AlignRight)
+
+        viewer.exec()
+
+
+def get_app_stylesheet() -> str:
+    """Tema visual global para una interfaz de escritorio moderna y legible."""
+    return """
+QWidget {
+    background-color: #f4f6f8;
+    color: #1f2933;
+    font-size: 12pt;
+}
+
+QMainWindow, QDialog {
+    background-color: #eef2f5;
+}
+
+QLabel {
+    font-size: 12pt;
+}
+
+QGroupBox {
+    font-size: 12pt;
+    font-weight: 600;
+    border: 1px solid #d8e1e8;
+    border-radius: 10px;
+    margin-top: 10px;
+    padding: 10px 12px 12px 12px;
+    background-color: #ffffff;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 12px;
+    top: -2px;
+    padding: 0 6px;
+    color: #2e4a62;
+}
+
+QLineEdit, QComboBox, QDateEdit, QSpinBox, QDoubleSpinBox, QTextEdit, QPlainTextEdit {
+    min-height: 34px;
+    padding: 6px 10px;
+    background-color: #ffffff;
+    border: 1px solid #c8d3dc;
+    border-radius: 8px;
+    selection-background-color: #2f6f9f;
+    selection-color: #ffffff;
+}
+
+QLineEdit:focus, QComboBox:focus, QDateEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus,
+QTextEdit:focus, QPlainTextEdit:focus {
+    border: 2px solid #2f6f9f;
+}
+
+QPushButton {
+    min-height: 38px;
+    padding: 7px 14px;
+    border: none;
+    border-radius: 9px;
+    background-color: #2f6f9f;
+    color: #ffffff;
+    font-weight: 600;
+}
+
+QPushButton:hover {
+    background-color: #265d86;
+}
+
+QPushButton:pressed {
+    background-color: #1f4e70;
+}
+
+QPushButton:disabled {
+    background-color: #9fb3c3;
+    color: #ecf1f5;
+}
+
+QTableWidget {
+    background-color: #ffffff;
+    alternate-background-color: #f6f9fb;
+    gridline-color: #d8e1e8;
+    border: 1px solid #d8e1e8;
+    border-radius: 10px;
+    font-size: 11.5pt;
+    selection-background-color: #2f6f9f;
+    selection-color: #ffffff;
+}
+
+QHeaderView::section:horizontal {
+    background-color: #d9e6ef;
+    color: #233a4d;
+    font-size: 11pt;
+    font-weight: 600;
+    border: none;
+    border-right: 1px solid #c5d3de;
+    border-bottom: 1px solid #c5d3de;
+    padding: 8px;
+}
+
+QHeaderView::section:vertical {
+    background-color: #e7eff5;
+    border: none;
+    border-right: 1px solid #c5d3de;
+    border-bottom: 1px solid #c5d3de;
+    padding: 2px;
+}
+
+QStatusBar {
+    background-color: #dfe8ef;
+    color: #203545;
+    font-size: 11pt;
+}
+
+QScrollBar:vertical {
+    background: #edf2f6;
+    width: 12px;
+    margin: 0;
+}
+
+QScrollBar::handle:vertical {
+    background: #adc1d1;
+    min-height: 25px;
+    border-radius: 6px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: #8fa9bc;
+}
+
+QMessageBox {
+    background-color: #f7fafc;
+}
+"""
 
 
 class ClientFormDialog(QDialog):
@@ -138,7 +418,7 @@ class SupplierFormDialog(QDialog):
 
         self.setWindowTitle("Editar Proveedor" if supplier else "Registrar Proveedor")
         self.setModal(True)
-        self.resize(420, 280)
+        self.resize(500, 280)
 
         layout = QVBoxLayout(self)
         form_layout = QFormLayout()
@@ -204,9 +484,10 @@ class SupplierFormDialog(QDialog):
 class SupplierManagementDialog(QDialog):
     """Pantalla CRUD para proveedores."""
 
-    def __init__(self, supplier_manager, parent=None):
+    def __init__(self, supplier_manager, parent=None, product_manager=None):
         super().__init__(parent)
         self.supplier_manager = supplier_manager
+        self.product_manager = product_manager
 
         self.setWindowTitle("Gestión de Proveedores")
         self.setModal(True)
@@ -218,6 +499,51 @@ class SupplierManagementDialog(QDialog):
     def setup_ui(self):
         """Construye la interfaz de proveedores."""
         layout = QVBoxLayout(self)
+
+        header_layout = QHBoxLayout()
+
+        icon_label = QLabel()
+        icon_label.setFixedSize(96, 96)
+        icon_label.setAlignment(Qt.AlignCenter)
+
+        icon_candidates = [
+            Path(__file__).resolve().parent / "imagenes" / "appicon.ico",
+            Path.cwd() / "imagenes" / "appicon.ico",
+        ]
+
+        rendered = False
+        for icon_path in icon_candidates:
+            if not icon_path.exists():
+                continue
+
+            icon = QIcon(str(icon_path))
+            pixmap = icon.pixmap(88, 88)
+            if pixmap.isNull():
+                pixmap = QPixmap(str(icon_path)).scaled(
+                    88,
+                    88,
+                    Qt.KeepAspectRatio,
+                    Qt.SmoothTransformation,
+                )
+
+            if not pixmap.isNull():
+                icon_label.setPixmap(pixmap)
+                rendered = True
+                break
+
+        if not rendered:
+            icon_label.setText("LX")
+            icon_label.setStyleSheet("font-size: 24pt; font-weight: 700; color: #2f6f9f;")
+        header_layout.addWidget(icon_label)
+
+        title_label = QLabel("Gestion de proveedores")
+        title_font = QFont()
+        title_font.setPointSize(14)
+        title_font.setBold(True)
+        title_label.setFont(title_font)
+        header_layout.addWidget(title_label)
+        header_layout.addStretch()
+        layout.addLayout(header_layout)
 
         button_layout = QHBoxLayout()
         self.add_btn = QPushButton("Nuevo Proveedor")
@@ -314,23 +640,28 @@ class SupplierManagementDialog(QDialog):
         )
         if reply == QMessageBox.Yes:
             self.supplier_manager.delete_supplier(supplier.id)
+            if self.product_manager:
+                self.product_manager.clear_supplier_reference(supplier.name)
             self.load_suppliers()
+            if self.parent() and hasattr(self.parent(), "refresh_products"):
+                self.parent().refresh_products()
             QMessageBox.information(self, "Éxito", "Proveedor eliminado correctamente.")
 
 
 class ProductFormDialog(QDialog):
     """Diálogo para añadir o editar productos."""
 
-    def __init__(self, parent=None, product=None, categories=None, supplier_names=None):
+    def __init__(self, parent=None, product=None, categories=None, supplier_names=None, supplier_manager=None):
         super().__init__(parent)
         self.product = product
         self.categories = categories or []
         self.supplier_names = supplier_names or []
+        self.supplier_manager = supplier_manager
 
         title = "Editar Producto" if product else "Nuevo Producto"
         self.setWindowTitle(title)
         self.setModal(True)
-        self.resize(400, 360)
+        self.resize(460, 430)
 
         self.setup_ui()
         if product:
@@ -338,6 +669,53 @@ class ProductFormDialog(QDialog):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
+
+        header_layout = QHBoxLayout()
+
+        icon_label = QLabel()
+        icon_label.setFixedSize(96, 96)
+        icon_label.setAlignment(Qt.AlignCenter)
+
+        icon_candidates = [
+            Path(__file__).resolve().parent / "imagenes" / "appicon.ico",
+            Path.cwd() / "imagenes" / "appicon.ico",
+        ]
+
+        rendered = False
+        for icon_path in icon_candidates:
+            if not icon_path.exists():
+                continue
+
+            icon = QIcon(str(icon_path))
+            pixmap = icon.pixmap(88, 88)
+            if pixmap.isNull():
+                pixmap = QPixmap(str(icon_path)).scaled(
+                    88,
+                    88,
+                    Qt.KeepAspectRatio,
+                    Qt.SmoothTransformation,
+                )
+
+            if not pixmap.isNull():
+                icon_label.setPixmap(pixmap)
+                rendered = True
+                break
+
+        if not rendered:
+            icon_label.setText("LX")
+            icon_label.setStyleSheet("font-size: 24pt; font-weight: 700; color: #2f6f9f;")
+        header_layout.addWidget(icon_label)
+
+        module_title = "Editar producto" if self.product else "Nuevo producto"
+        title_label = QLabel(module_title)
+        title_font = QFont()
+        title_font.setPointSize(14)
+        title_font.setBold(True)
+        title_label.setFont(title_font)
+        header_layout.addWidget(title_label)
+        header_layout.addStretch()
+        layout.addLayout(header_layout)
+
         form_layout = QFormLayout()
 
         self.name_edit = QLineEdit()
@@ -414,9 +792,16 @@ class ProductFormDialog(QDialog):
         if not data["category"]:
             QMessageBox.warning(self, "Error", "La categoría es obligatoria.")
             return
+        if not data["supplier"]:
+            QMessageBox.warning(self, "Error", "El proveedor es obligatorio.")
+            return
         if data["price"] < 5000:
             QMessageBox.warning(self, "Error", "El precio debe ser mayor o igual a $5,000 COP.")
             return
+
+        if self.supplier_manager and not self.supplier_manager.get_supplier_by_name(data["supplier"]):
+            self.supplier_manager.add_supplier(name=data["supplier"])
+
         super().accept()
 
 
@@ -442,12 +827,50 @@ class SalesDialog(QDialog):
     def setup_ui(self):
         layout = QVBoxLayout(self)
 
+        header_layout = QHBoxLayout()
+
+        icon_label = QLabel()
+        icon_label.setFixedSize(96, 96)
+        icon_label.setAlignment(Qt.AlignCenter)
+
+        icon_candidates = [
+            Path(__file__).resolve().parent / "imagenes" / "appicon.ico",
+            Path.cwd() / "imagenes" / "appicon.ico",
+        ]
+
+        rendered = False
+        for icon_path in icon_candidates:
+            if not icon_path.exists():
+                continue
+
+            icon = QIcon(str(icon_path))
+            pixmap = icon.pixmap(88, 88)
+            if pixmap.isNull():
+                pixmap = QPixmap(str(icon_path)).scaled(
+                    88,
+                    88,
+                    Qt.KeepAspectRatio,
+                    Qt.SmoothTransformation,
+                )
+
+            if not pixmap.isNull():
+                icon_label.setPixmap(pixmap)
+                rendered = True
+                break
+
+        if not rendered:
+            icon_label.setText("LX")
+            icon_label.setStyleSheet("font-size: 24pt; font-weight: 700; color: #2f6f9f;")
+        header_layout.addWidget(icon_label)
+
         title_label = QLabel("Registro de ventas")
         title_font = QFont()
         title_font.setPointSize(14)
         title_font.setBold(True)
         title_label.setFont(title_font)
-        layout.addWidget(title_label)
+        header_layout.addWidget(title_label)
+        header_layout.addStretch()
+        layout.addLayout(header_layout)
 
         client_group = QGroupBox("Cliente")
         client_layout = QVBoxLayout(client_group)
@@ -794,6 +1217,51 @@ class PurchaseHistoryDialog(QDialog):
     def setup_ui(self):
         layout = QVBoxLayout(self)
 
+        header_layout = QHBoxLayout()
+
+        icon_label = QLabel()
+        icon_label.setFixedSize(96, 96)
+        icon_label.setAlignment(Qt.AlignCenter)
+
+        icon_candidates = [
+            Path(__file__).resolve().parent / "imagenes" / "appicon.ico",
+            Path.cwd() / "imagenes" / "appicon.ico",
+        ]
+
+        rendered = False
+        for icon_path in icon_candidates:
+            if not icon_path.exists():
+                continue
+
+            icon = QIcon(str(icon_path))
+            pixmap = icon.pixmap(88, 88)
+            if pixmap.isNull():
+                pixmap = QPixmap(str(icon_path)).scaled(
+                    88,
+                    88,
+                    Qt.KeepAspectRatio,
+                    Qt.SmoothTransformation,
+                )
+
+            if not pixmap.isNull():
+                icon_label.setPixmap(pixmap)
+                rendered = True
+                break
+
+        if not rendered:
+            icon_label.setText("LX")
+            icon_label.setStyleSheet("font-size: 24pt; font-weight: 700; color: #2f6f9f;")
+        header_layout.addWidget(icon_label)
+
+        title_label = QLabel("Historial de compras")
+        title_font = QFont()
+        title_font.setPointSize(14)
+        title_font.setBold(True)
+        title_label.setFont(title_font)
+        header_layout.addWidget(title_label)
+        header_layout.addStretch()
+        layout.addLayout(header_layout)
+
         search_layout = QHBoxLayout()
         search_layout.addWidget(QLabel("Cédula:"))
         self.document_edit = QLineEdit()
@@ -905,12 +1373,50 @@ class RestockOrderDialog(QDialog):
     def setup_ui(self):
         layout = QVBoxLayout(self)
 
+        header_layout = QHBoxLayout()
+
+        icon_label = QLabel()
+        icon_label.setFixedSize(96, 96)
+        icon_label.setAlignment(Qt.AlignCenter)
+
+        icon_candidates = [
+            Path(__file__).resolve().parent / "imagenes" / "appicon.ico",
+            Path.cwd() / "imagenes" / "appicon.ico",
+        ]
+
+        rendered = False
+        for icon_path in icon_candidates:
+            if not icon_path.exists():
+                continue
+
+            icon = QIcon(str(icon_path))
+            pixmap = icon.pixmap(88, 88)
+            if pixmap.isNull():
+                pixmap = QPixmap(str(icon_path)).scaled(
+                    88,
+                    88,
+                    Qt.KeepAspectRatio,
+                    Qt.SmoothTransformation,
+                )
+
+            if not pixmap.isNull():
+                icon_label.setPixmap(pixmap)
+                rendered = True
+                break
+
+        if not rendered:
+            icon_label.setText("LX")
+            icon_label.setStyleSheet("font-size: 24pt; font-weight: 700; color: #2f6f9f;")
+        header_layout.addWidget(icon_label)
+
         title_label = QLabel("Generación de órdenes de reabastecimiento")
         title_font = QFont()
         title_font.setPointSize(13)
         title_font.setBold(True)
         title_label.setFont(title_font)
-        layout.addWidget(title_label)
+        header_layout.addWidget(title_label)
+        header_layout.addStretch()
+        layout.addLayout(header_layout)
 
         supplier_group = QGroupBox("Proveedor y productos")
         supplier_layout = QVBoxLayout(supplier_group)
@@ -1207,12 +1713,50 @@ class SalesReportDialog(QDialog):
     def setup_ui(self):
         layout = QVBoxLayout(self)
 
+        header_layout = QHBoxLayout()
+
+        icon_label = QLabel()
+        icon_label.setFixedSize(96, 96)
+        icon_label.setAlignment(Qt.AlignCenter)
+
+        icon_candidates = [
+            Path(__file__).resolve().parent / "imagenes" / "appicon.ico",
+            Path.cwd() / "imagenes" / "appicon.ico",
+        ]
+
+        rendered = False
+        for icon_path in icon_candidates:
+            if not icon_path.exists():
+                continue
+
+            icon = QIcon(str(icon_path))
+            pixmap = icon.pixmap(88, 88)
+            if pixmap.isNull():
+                pixmap = QPixmap(str(icon_path)).scaled(
+                    88,
+                    88,
+                    Qt.KeepAspectRatio,
+                    Qt.SmoothTransformation,
+                )
+
+            if not pixmap.isNull():
+                icon_label.setPixmap(pixmap)
+                rendered = True
+                break
+
+        if not rendered:
+            icon_label.setText("LX")
+            icon_label.setStyleSheet("font-size: 24pt; font-weight: 700; color: #2f6f9f;")
+        header_layout.addWidget(icon_label)
+
         title_label = QLabel("Reporte de ventas por rango de fechas")
         title_font = QFont()
-        title_font.setPointSize(13)
+        title_font.setPointSize(14)
         title_font.setBold(True)
         title_label.setFont(title_font)
-        layout.addWidget(title_label)
+        header_layout.addWidget(title_label)
+        header_layout.addStretch()
+        layout.addLayout(header_layout)
 
         filters_layout = QHBoxLayout()
         filters_layout.addWidget(QLabel("Desde:"))
@@ -1379,6 +1923,192 @@ class SalesReportDialog(QDialog):
             QMessageBox.critical(self, "Error", f"No se pudo exportar a PDF: {error}")
 
 
+class BusinessDashboardDialog(QDialog):
+    """Vista general con indicadores resumidos del negocio."""
+
+    def __init__(self, sale_manager, parent=None):
+        super().__init__(parent)
+        self.sale_manager = sale_manager
+
+        self.setWindowTitle("Vista General del Negocio")
+        self.setModal(True)
+        self.resize(860, 560)
+
+        self.setup_ui()
+        self.refresh_metrics()
+
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+
+        header_layout = QHBoxLayout()
+
+        icon_label = QLabel()
+        icon_label.setFixedSize(96, 96)
+        icon_label.setAlignment(Qt.AlignCenter)
+
+        icon_candidates = [
+            Path(__file__).resolve().parent / "imagenes" / "appicon.ico",
+            Path.cwd() / "imagenes" / "appicon.ico",
+        ]
+
+        rendered = False
+        for icon_path in icon_candidates:
+            if not icon_path.exists():
+                continue
+
+            icon = QIcon(str(icon_path))
+            pixmap = icon.pixmap(88, 88)
+            if pixmap.isNull():
+                pixmap = QPixmap(str(icon_path)).scaled(
+                    88,
+                    88,
+                    Qt.KeepAspectRatio,
+                    Qt.SmoothTransformation,
+                )
+
+            if not pixmap.isNull():
+                icon_label.setPixmap(pixmap)
+                rendered = True
+                break
+
+        if not rendered:
+            icon_label.setText("LX")
+            icon_label.setStyleSheet("font-size: 24pt; font-weight: 700; color: #2f6f9f;")
+        header_layout.addWidget(icon_label)
+
+        title = QLabel("Indicadores generales")
+        title_font = QFont()
+        title_font.setPointSize(14)
+        title_font.setBold(True)
+        title.setFont(title_font)
+        header_layout.addWidget(title)
+        header_layout.addStretch()
+        layout.addLayout(header_layout)
+
+        subtitle = QLabel("Resumen rápido para monitorear el rendimiento del negocio")
+        subtitle.setStyleSheet("color: gray;")
+        layout.addWidget(subtitle)
+
+        cards_layout = QHBoxLayout()
+        self.sales_today_card = QGroupBox("Ventas del dia")
+        self.top_product_card = QGroupBox("Producto mas vendido")
+        self.total_income_card = QGroupBox("Total ingresos (rango)")
+
+        sales_module_layout = QVBoxLayout()
+        sales_filter_layout = QHBoxLayout()
+        sales_filter_layout.addWidget(QLabel("Dia ventas:"))
+        self.sales_day_edit = QDateEdit()
+        self.sales_day_edit.setCalendarPopup(True)
+        self.sales_day_edit.setDate(QDate.currentDate())
+        sales_filter_layout.addWidget(self.sales_day_edit)
+        sales_module_layout.addLayout(sales_filter_layout)
+        sales_module_layout.addWidget(self.sales_today_card)
+
+        top_product_module_layout = QVBoxLayout()
+        top_product_filter_layout = QHBoxLayout()
+        top_product_filter_layout.addWidget(QLabel("Dia producto:"))
+        self.product_day_edit = QDateEdit()
+        self.product_day_edit.setCalendarPopup(True)
+        self.product_day_edit.setDate(QDate.currentDate())
+        top_product_filter_layout.addWidget(self.product_day_edit)
+        top_product_module_layout.addLayout(top_product_filter_layout)
+        top_product_module_layout.addWidget(self.top_product_card)
+
+        income_module_layout = QVBoxLayout()
+        income_filter_layout = QHBoxLayout()
+        income_filter_layout.addWidget(QLabel("Desde:"))
+        self.range_start_edit = QDateEdit()
+        self.range_start_edit.setCalendarPopup(True)
+        self.range_start_edit.setDate(QDate.currentDate())
+        income_filter_layout.addWidget(self.range_start_edit)
+        income_filter_layout.addWidget(QLabel("Hasta:"))
+        self.range_end_edit = QDateEdit()
+        self.range_end_edit.setCalendarPopup(True)
+        self.range_end_edit.setDate(QDate.currentDate())
+        income_filter_layout.addWidget(self.range_end_edit)
+        income_module_layout.addLayout(income_filter_layout)
+        income_module_layout.addWidget(self.total_income_card)
+
+        self.sales_today_value = QLabel("$0 COP")
+        self.sales_today_meta = QLabel("0 ventas en el dia")
+
+        self.top_product_value = QLabel("")
+        self.top_product_meta = QLabel("0 unidades")
+
+        self.total_income_value = QLabel("$0 COP")
+        self.total_income_meta = QLabel("0 ventas en el rango")
+
+        self._setup_card(self.sales_today_card, self.sales_today_value, self.sales_today_meta)
+        self._setup_card(self.top_product_card, self.top_product_value, self.top_product_meta)
+        self._setup_card(self.total_income_card, self.total_income_value, self.total_income_meta)
+
+        cards_layout.addLayout(sales_module_layout)
+        cards_layout.addLayout(top_product_module_layout)
+        cards_layout.addLayout(income_module_layout)
+        layout.addLayout(cards_layout)
+
+        self.general_stats_label = QLabel("Cargando indicadores...")
+        layout.addWidget(self.general_stats_label)
+
+        actions = QHBoxLayout()
+        actions.addStretch()
+        refresh_btn = QPushButton("Actualizar indicadores")
+        refresh_btn.clicked.connect(self.refresh_metrics)
+        actions.addWidget(refresh_btn)
+        close_btn = QPushButton("Cerrar")
+        close_btn.clicked.connect(self.accept)
+        actions.addWidget(close_btn)
+        layout.addLayout(actions)
+
+    def _setup_card(self, group: QGroupBox, value_label: QLabel, meta_label: QLabel):
+        group_layout = QVBoxLayout(group)
+        value_font = QFont()
+        value_font.setPointSize(13)
+        value_font.setBold(True)
+        value_label.setFont(value_font)
+        meta_label.setStyleSheet("color: gray;")
+        group_layout.addWidget(value_label)
+        group_layout.addWidget(meta_label)
+        group_layout.addStretch()
+
+    def refresh_metrics(self):
+        sales = self.sale_manager.get_all_sales()
+        range_start = self.range_start_edit.date().toPython()
+        range_end = self.range_end_edit.date().toPython()
+        sales_day = self.sales_day_edit.date().toPython()
+        top_product_day = self.product_day_edit.date().toPython()
+
+        if range_start > range_end:
+            QMessageBox.warning(self, "Rango inválido", "La fecha Desde no puede ser mayor a la fecha Hasta.")
+            return
+
+        metrics = build_dashboard_metrics(
+            sales,
+            start_date=range_start,
+            end_date=range_end,
+            sales_day=sales_day,
+            top_product_day=top_product_day,
+        )
+
+        self.sales_today_value.setText(f"${metrics['sales_day_amount']:,.0f} COP")
+        self.sales_today_meta.setText(f"{metrics['sales_day_count']} ventas en {metrics['sales_day']}")
+
+        self.top_product_value.setText(metrics["top_product_name"])
+        self.top_product_meta.setText(f"{metrics['top_product_quantity']} unidades vendidas en {metrics['top_product_day']}")
+
+        self.total_income_value.setText(f"${metrics['total_income']:,.0f} COP")
+        self.total_income_meta.setText(f"{metrics['total_sales_count']} ventas en el rango")
+
+        self.general_stats_label.setText(
+            " | ".join(
+                [
+                    f"Unidades vendidas: {metrics['total_units_sold']}",
+                    f"Rango: {metrics['range_start']} a {metrics['range_end']}",
+                ]
+            )
+        )
+
+
 class MainWindow(QMainWindow):
     """Ventana principal del sistema LibroExpress."""
 
@@ -1389,6 +2119,7 @@ class MainWindow(QMainWindow):
         self.supplier_manager = SupplierManager()
         self.sale_manager = SaleManager(self.product_manager)
         self.restock_manager = RestockOrderManager(self.product_manager, self.supplier_manager)
+        self._exact_search_match_product_id = None
         self.setup_ui()
         self.load_products()
 
@@ -1397,7 +2128,7 @@ class MainWindow(QMainWindow):
 
     def setup_ui(self):
         self.setWindowTitle("LibroExpress - Sistema de Inventario, Ventas y Clientes")
-        self.setMinimumSize(1120, 720)
+        self.setMinimumSize(1320, 820)
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -1446,19 +2177,31 @@ class MainWindow(QMainWindow):
         self.restock_btn.clicked.connect(self.manage_restock)
         self.sales_report_btn = QPushButton("Reportes Ventas")
         self.sales_report_btn.clicked.connect(self.show_sales_reports)
+        self.dashboard_btn = QPushButton("Vista General")
+        self.dashboard_btn.clicked.connect(self.show_business_dashboard)
         self.refresh_btn = QPushButton("Actualizar")
         self.refresh_btn.clicked.connect(self.refresh_products)
+        self.exit_btn = QPushButton("Salir")
+        self.exit_btn.clicked.connect(self.confirm_exit)
 
-        button_layout.addWidget(self.add_btn)
-        button_layout.addWidget(self.edit_btn)
-        button_layout.addWidget(self.delete_btn)
-        button_layout.addWidget(self.sale_btn)
-        button_layout.addWidget(self.history_btn)
-        button_layout.addWidget(self.supplier_btn)
-        button_layout.addWidget(self.restock_btn)
-        button_layout.addWidget(self.sales_report_btn)
-        button_layout.addWidget(self.refresh_btn)
-        button_layout.addStretch()
+        action_buttons = [
+            self.add_btn,
+            self.edit_btn,
+            self.delete_btn,
+            self.sale_btn,
+            self.history_btn,
+            self.supplier_btn,
+            self.restock_btn,
+            self.sales_report_btn,
+            self.dashboard_btn,
+            self.refresh_btn,
+            self.exit_btn,
+        ]
+        for button in action_buttons:
+            button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+        for button in action_buttons:
+            button_layout.addWidget(button)
         main_layout.addLayout(button_layout)
 
         self.products_table = QTableWidget()
@@ -1486,9 +2229,9 @@ class MainWindow(QMainWindow):
 
         vertical_header = self.products_table.verticalHeader()
         vertical_header.setSectionResizeMode(QHeaderView.Fixed)
-        vertical_header.setDefaultSectionSize(30)
-        vertical_header.setMinimumSectionSize(25)
-        vertical_header.setMaximumSectionSize(40)
+        vertical_header.setDefaultSectionSize(36)
+        vertical_header.setMinimumSectionSize(32)
+        vertical_header.setMaximumSectionSize(44)
         self.products_table.selectionModel().selectionChanged.connect(self.on_selection_changed)
 
     def load_products(self, products=None):
@@ -1503,10 +2246,19 @@ class MainWindow(QMainWindow):
             self.products_table.setItem(row, 4, QTableWidgetItem(f"${product.price:,.0f} COP"))
             self.products_table.setItem(row, 5, QTableWidgetItem(product.supplier))
             self.products_table.setItem(row, 6, QTableWidgetItem(str(product.quantity)))
+        # Permite acciones rápidas cuando solo hay un resultado visible.
+        if len(products) == 1:
+            self.edit_btn.setEnabled(True)
+            self.delete_btn.setEnabled(True)
+        else:
+            self.edit_btn.setEnabled(False)
+            self.delete_btn.setEnabled(False)
         self.statusBar().showMessage(f"Total de productos: {len(products)}")
 
     def on_selection_changed(self):
         has_selection = bool(self.products_table.selectionModel().selectedRows())
+        if not has_selection and self.products_table.rowCount() == 1:
+            has_selection = True
         self.edit_btn.setEnabled(has_selection)
         self.delete_btn.setEnabled(has_selection)
 
@@ -1521,7 +2273,12 @@ class MainWindow(QMainWindow):
     def add_product(self):
         categories = self.product_manager.get_categories()
         supplier_names = self.supplier_manager.get_supplier_names()
-        dialog = ProductFormDialog(self, categories=categories, supplier_names=supplier_names)
+        dialog = ProductFormDialog(
+            self,
+            categories=categories,
+            supplier_names=supplier_names,
+            supplier_manager=self.supplier_manager,
+        )
         if dialog.exec() == QDialog.Accepted:
             try:
                 self.product_manager.add_product(**dialog.get_form_data())
@@ -1532,11 +2289,23 @@ class MainWindow(QMainWindow):
 
     def edit_product(self):
         product = self.get_selected_product()
+        if not product and self._exact_search_match_product_id:
+            product = self.product_manager.get_product_by_id(self._exact_search_match_product_id)
+        if not product and self.products_table.rowCount() == 1:
+            product_id_item = self.products_table.item(0, 0)
+            if product_id_item is not None:
+                product = self.product_manager.get_product_by_id(product_id_item.text())
         if not product:
             return
         categories = self.product_manager.get_categories()
         supplier_names = self.supplier_manager.get_supplier_names()
-        dialog = ProductFormDialog(self, product=product, categories=categories, supplier_names=supplier_names)
+        dialog = ProductFormDialog(
+            self,
+            product=product,
+            categories=categories,
+            supplier_names=supplier_names,
+            supplier_manager=self.supplier_manager,
+        )
         if dialog.exec() == QDialog.Accepted:
             try:
                 self.product_manager.update_product(product.id, **dialog.get_form_data())
@@ -1547,15 +2316,28 @@ class MainWindow(QMainWindow):
 
     def delete_product(self):
         product = self.get_selected_product()
+        if not product and self._exact_search_match_product_id:
+            product = self.product_manager.get_product_by_id(self._exact_search_match_product_id)
+        if not product and self.products_table.rowCount() == 1:
+            product_id_item = self.products_table.item(0, 0)
+            if product_id_item is not None:
+                product = self.product_manager.get_product_by_id(product_id_item.text())
         if not product:
             return
-        reply = QMessageBox.question(
-            self,
-            "Confirmar eliminación",
-            f"¿Está seguro de que desea eliminar el producto '{product.name}'?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
-        )
+        message_box = QMessageBox(self)
+        message_box.setIcon(QMessageBox.Question)
+        message_box.setWindowTitle("Confirmar eliminación")
+        message_box.setText(f"¿Está seguro de que desea eliminar el producto '{product.name}'?")
+        message_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        message_box.setDefaultButton(QMessageBox.No)
+
+        # En modo automatizado UI, confirmar Yes sin interacción manual.
+        if os.environ.get("LIBROEXPRESS_UI_AUTO_CONFIRM_DELETE") == "1":
+            yes_button = message_box.button(QMessageBox.Yes)
+            if yes_button is not None:
+                QTimer.singleShot(120, yes_button.click)
+
+        reply = message_box.exec()
         if reply == QMessageBox.Yes:
             try:
                 self.product_manager.delete_product(product.id)
@@ -1595,7 +2377,11 @@ class MainWindow(QMainWindow):
         PurchaseHistoryDialog(self.client_manager, self.sale_manager, self).exec()
 
     def manage_suppliers(self):
-        SupplierManagementDialog(self.supplier_manager, self).exec()
+        SupplierManagementDialog(
+            self.supplier_manager,
+            self,
+            product_manager=self.product_manager,
+        ).exec()
 
     def manage_restock(self):
         RestockOrderDialog(
@@ -1608,6 +2394,9 @@ class MainWindow(QMainWindow):
     def show_sales_reports(self):
         SalesReportDialog(self.sale_manager, self).exec()
 
+    def show_business_dashboard(self):
+        BusinessDashboardDialog(self.sale_manager, self).exec()
+
     def refresh_products(self):
         self.product_manager.load_products()
         if self.search_edit.text():
@@ -1619,23 +2408,70 @@ class MainWindow(QMainWindow):
         query = self.search_edit.text().strip()
         if not query:
             self.load_products()
+            self._exact_search_match_product_id = None
             return
         search_type_map = {"Nombre": "name", "Categoría": "category", "Todos": "all"}
         search_type = search_type_map.get(self.search_type_combo.currentText(), "all")
         results = self.product_manager.search_products(query, search_type)
         self.load_products(results)
+        self._auto_select_exact_match_for_delete(query, results)
+
+    def _auto_select_exact_match_for_delete(self, query: str, results) -> None:
+        """Selecciona automáticamente una coincidencia exacta para facilitar la eliminación."""
+        normalized_query = query.strip().lower()
+        if not normalized_query or not results:
+            self._exact_search_match_product_id = None
+            return
+
+        if len(results) != 1:
+            self._exact_search_match_product_id = None
+            return
+
+        product = results[0]
+        if product.name.strip().lower() != normalized_query:
+            self._exact_search_match_product_id = None
+            return
+
+        self._exact_search_match_product_id = product.id
+
+        if self.products_table.rowCount() > 0:
+            self.products_table.selectRow(0)
+            self.on_selection_changed()
+        else:
+            self.edit_btn.setEnabled(True)
+            self.delete_btn.setEnabled(True)
 
     def clear_search(self):
         self.search_edit.clear()
         self.search_type_combo.setCurrentText("Todos")
         self.load_products()
 
+    def confirm_exit(self):
+        reply = QMessageBox.question(
+            self,
+            "Confirmar salida",
+            "Esta seguro que quiere salir al escritorio?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply == QMessageBox.Yes:
+            self.close()
+
 
 def main():
     app = QApplication(sys.argv)
+    app.setWindowIcon(get_program_icon())
     app.setStyle("Fusion")
+    app.setFont(QFont("Segoe UI", 11))
+    app.setStyleSheet(get_app_stylesheet())
+
+    start_screen = StartScreenDialog()
+    if start_screen.exec() != QDialog.Accepted:
+        return
+
     window = MainWindow()
-    window.show()
+    window.setWindowIcon(app.windowIcon())
+    window.showMaximized()
     sys.exit(app.exec())
 
 

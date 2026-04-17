@@ -75,6 +75,15 @@ restock_orders.json
 recibos/
 ordenes_reabastecimiento/
 
+# SonarQube / análisis estático local
+.scannerwork/
+sonar-project.properties
+
+# Artefactos de pruebas locales
+libroexpress_tests/
+.pytest_cache/
+.coverage
+
 # Exportaciones de reportes
 reporte_ventas_*.csv
 reporte_ventas_*.xlsx

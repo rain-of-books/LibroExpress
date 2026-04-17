@@ -108,11 +108,25 @@ class SupplierManager:
 				return supplier
 		return None
 
+	def get_supplier_by_name(self, name: str) -> Optional[Supplier]:
+		"""Busca un proveedor por nombre (insensible a mayúsculas/minúsculas)."""
+		normalized_name = name.strip().lower()
+		for supplier in self.suppliers:
+			if supplier.name.strip().lower() == normalized_name:
+				return supplier
+		return None
+
 	def get_supplier_names(self) -> List[str]:
 		"""Retorna solo los nombres de proveedores para combos."""
 		return sorted({supplier.name for supplier in self.suppliers if supplier.name})
 
-	def add_supplier(self, name: str, phone: str, email: str, address: str = "") -> Supplier:
+	def add_supplier(
+		self,
+		name: str,
+		phone: str = "",
+		email: str = "",
+		address: str = "",
+	) -> Supplier:
 		"""Registra un nuevo proveedor."""
 		supplier = Supplier(name=name, phone=phone, email=email, address=address)
 		self.suppliers.append(supplier)

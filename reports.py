@@ -60,6 +60,73 @@ def summarize_sales_rows(rows: List[Dict]) -> Dict:
     }
 
 
+def build_dashboard_metrics(
+    sales,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    sales_day: date | None = None,
+    top_product_day: date | None = None,
+    selected_day: date | None = None,
+) -> Dict:
+    """Construye métricas resumidas usando un rango y un día de análisis."""
+    today = date.today()
+    range_start = start_date or today
+    range_end = end_date or today
+    day_for_sales = sales_day or selected_day or today
+    day_for_top_product = top_product_day or selected_day or today
+
+    if range_start > range_end:
+        raise ValueError("La fecha inicial no puede ser mayor que la fecha final.")
+
+    sales_day_amount = 0.0
+    sales_day_count = 0
+    total_income = 0.0
+    total_units_sold = 0
+    total_sales_count = 0
+    product_quantities: Dict[str, int] = {}
+
+    for sale in sales:
+        sale_date = _parse_sale_date(sale.created_at)
+        sale_gross_total = sale.total + round(sale.total * IVA_RATE)
+
+        if range_start <= sale_date <= range_end:
+            total_income += sale_gross_total
+            total_sales_count += 1
+            for item in sale.items:
+                total_units_sold += item.quantity
+
+        if sale_date == day_for_sales:
+            sales_day_amount += sale_gross_total
+            sales_day_count += 1
+
+        if sale_date == day_for_top_product:
+            for item in sale.items:
+                product_quantities[item.product_name] = product_quantities.get(item.product_name, 0) + item.quantity
+
+    top_product_name = ""
+    top_product_quantity = 0
+    if product_quantities:
+        top_product_name, top_product_quantity = sorted(
+            product_quantities.items(),
+            key=lambda pair: (-pair[1], pair[0].lower()),
+        )[0]
+
+    return {
+        "sales_day_amount": sales_day_amount,
+        "sales_day_count": sales_day_count,
+        "top_product_name": top_product_name,
+        "top_product_quantity": top_product_quantity,
+        "total_income": total_income,
+        "total_sales_count": total_sales_count,
+        "total_units_sold": total_units_sold,
+        "range_start": range_start.isoformat(),
+        "range_end": range_end.isoformat(),
+        "sales_day": day_for_sales.isoformat(),
+        "top_product_day": day_for_top_product.isoformat(),
+        "selected_day": day_for_top_product.isoformat(),
+    }
+
+
 def export_sales_report_csv(rows: List[Dict], file_path: str) -> None:
     """Exporta el reporte detallado a CSV."""
     summary = summarize_sales_rows(rows)
